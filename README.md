@@ -50,3 +50,90 @@ mingw32-make -j8          # 或 make -j8 / jom
 5. 点击启动按钮运行 `llama-server`，可在右侧页签查看日志与速度统计，或直接打开内置 WebUI。
 
 参数配置可通过「保存启动参数 / 引入启动参数」导出为 JSON 文件复用。
+
+### llama-server 命令行用法
+
+GUI 只是把参数拼成下列命令行，了解原始用法有助于排查问题。
+
+最基本的启动方式（只有 `-m` 是必填的）：
+
+```bat
+llama-server.exe -m 模型路径.gguf -c 8192
+```
+
+启动后默认监听 `127.0.0.1:8080`，浏览器打开 `http://localhost:8080` 即为内置 WebUI。一个较完整的手工启动示例：
+
+```bat
+cd /d D:\llama.cpp\cuda_full
+llama-server.exe -m D:\models\qwen\Qwen3-8B-Q4_K_M.gguf ^
+  -ngl 60 -c 8192 --spec-type draft-mtp --spec-draft-n-max 2 ^
+  --host 127.0.0.1 --port 8090 -a Qwen3-8B-Q4_K_M --api-key sk-xxxx
+```
+
+常用参数按用途分组：
+
+**模型加载**
+
+| 参数 | 作用 |
+|------|------|
+| `-m, --model` | 模型文件路径，必填 |
+| `-ngl, --gpu-layers` | 卸载到显存的层数，`99`/`all` 表示全部上卡 |
+| `-c, --ctx-size` | 上下文长度，0 = 使用模型自带值 |
+| `-mm, --mmproj` | 多模态投影文件（视觉模型需要） |
+| `-a, --alias` | 对外暴露的模型名，客户端请求的 `model` 字段即它 |
+
+**性能与显存**
+
+| 参数 | 作用 |
+|------|------|
+| `-t, --threads` | CPU 线程数 |
+| `-fa, --flash-attn [on\|off\|auto]` | Flash Attention，量化 KV 缓存时建议开启 |
+| `--cpu-moe` | MoE 专家层放 CPU，节省显存 |
+| `-ctk` / `-ctv` | KV 缓存量化类型，如 `-ctk q8_0 -ctv q8_0` |
+| `-np, --parallel` | 并发 slot 数，-1 为自动 |
+| `-b` / `-ub` | 逻辑 / 物理批大小，影响吞吐与显存峰值 |
+
+**服务与网络**
+
+| 参数 | 作用 |
+|------|------|
+| `--host` | 监听地址，默认 `127.0.0.1`；填 `0.0.0.0` 可被局域网访问 |
+| `--port` | 监听端口，默认 8080 |
+| `--api-key` | 访问密钥，客户端需带 `Authorization: Bearer <key>` |
+| `--metrics` | 开启 Prometheus 兼容监控端点 |
+| `--threads-http` | HTTP 请求处理线程数 |
+
+**推理行为**
+
+| 参数 | 作用 |
+|------|------|
+| `-rea, --reasoning [on\|off\|auto]` | 是否启用思考 / 推理链 |
+| `--reasoning-budget N` | 思考 token 预算，0 = 立即结束思考 |
+| `--jinja` | 使用模型自带 chat template，默认开启 |
+| `--spec-type` / `--spec-draft-n-max` | 投机解码类型与每次起草 token 数，如 `--spec-type draft-mtp --spec-draft-n-max 2` |
+
+### API 调用
+
+服务启动后即为标准 HTTP 接口，可直接用 curl 或任意 OpenAI SDK（把 `base_url` 指向 `http://localhost:<port>/v1`）：
+
+```bash
+# 对话（OpenAI 兼容）
+curl http://localhost:8090/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-xxxx" \
+  -d '{"model":"Qwen3-8B-Q4_K_M","messages":[{"role":"user","content":"你好"}],"stream":true}'
+
+# 原生续写接口
+curl http://localhost:8090/completion \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"写一个快速排序：","n_predict":128}'
+
+# 向量化
+curl http://localhost:8090/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"input":"hello","model":"x"}'
+```
+
+其他常用端点：`/v1/messages`（Anthropic 兼容）、`/v1/responses`、`/tokenize`、`/detokenize`、`/reranking`、`/infill`（代码补全）、`/props`（服务状态）、`/slots`（各 slot 进度，本 GUI 即解析此类输出显示速度统计）、`/metrics`。
+
+完整参数列表可执行 `llama-server.exe --help` 查看（本仓库的 `server_help.txt` 即一份完整输出）。显存不足时，依次尝试：降低 `-ngl` → 加 `--cpu-moe` → 开启 KV 量化（`-ctk q8_0 -ctv q8_0`，需配合 `-fa on`）→ 降低 `-c`。
