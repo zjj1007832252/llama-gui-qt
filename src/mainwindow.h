@@ -83,7 +83,27 @@ private:
     QCheckBox *m_nglCheck = nullptr;    QSpinBox *m_nglSpin = nullptr;
     QCheckBox *m_noMmapCheck = nullptr;
     QCheckBox *m_cpuMoeCheck = nullptr;
-    QCheckBox *m_specCheck = nullptr;   QSpinBox *m_specSpin = nullptr;
+
+    // ---- left: speculative decoding tab ----
+    QCheckBox *m_specTypeCheck = nullptr;    QComboBox *m_specTypeCombo = nullptr;
+    QCheckBox *m_specNMaxCheck = nullptr;    QSpinBox *m_specNMaxSpin = nullptr;
+    QCheckBox *m_specNMinCheck = nullptr;    QSpinBox *m_specNMinSpin = nullptr;
+    QCheckBox *m_specModelCheck = nullptr;   QLineEdit *m_specModelEdit = nullptr;
+    QCheckBox *m_specNglCheck = nullptr;     QLineEdit *m_specNglEdit = nullptr;
+    QCheckBox *m_specThreadsCheck = nullptr; QSpinBox *m_specThreadsSpin = nullptr;
+    QCheckBox *m_specCpuMoeCheck = nullptr;
+    QCheckBox *m_specPSplitCheck = nullptr;  QDoubleSpinBox *m_specPSplitSpin = nullptr;
+    QCheckBox *m_specPMinCheck = nullptr;    QDoubleSpinBox *m_specPMinSpin = nullptr;
+    QCheckBox *m_ngModNMinCheck = nullptr;   QSpinBox *m_ngModNMinSpin = nullptr;
+    QCheckBox *m_ngModNMaxCheck = nullptr;   QSpinBox *m_ngModNMaxSpin = nullptr;
+    QCheckBox *m_ngModNMatchCheck = nullptr; QSpinBox *m_ngModNMatchSpin = nullptr;
+    QCheckBox *m_ngSimpleNCheck = nullptr;   QSpinBox *m_ngSimpleNSpin = nullptr;
+    QCheckBox *m_ngSimpleMCheck = nullptr;   QSpinBox *m_ngSimpleMSpin = nullptr;
+    QCheckBox *m_ngSimpleHitsCheck = nullptr; QSpinBox *m_ngSimpleHitsSpin = nullptr;
+    QCheckBox *m_ngMapKNCheck = nullptr;     QSpinBox *m_ngMapKNSpin = nullptr;
+    QCheckBox *m_ngMapKMCheck = nullptr;     QSpinBox *m_ngMapKMSpin = nullptr;
+    QCheckBox *m_ngMapKHitsCheck = nullptr;  QSpinBox *m_ngMapKHitsSpin = nullptr;
+    QCheckBox *m_specDefaultCheck = nullptr;
 
     // ---- left: batch / multi-gpu / parallel ----
     QCheckBox *m_batchCheck = nullptr;    QSpinBox *m_batchSpin = nullptr;

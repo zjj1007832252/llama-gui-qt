@@ -5,9 +5,10 @@ llama.cpp `llama-server` 的 Qt 图形化启动器。在界面上选择模型、
 ## 主要功能
 
 - **模型管理**：选择 llama.cpp 工具目录（启动时自动在 PATH 中搜索 `llama-server`）、扫描模型目录下的所有 `.gguf` 文件、支持多模态 `mmproj` 文件
-- **核心参数**：上下文窗口、CPU 线程数、Flash Attention、GPU 卸载层数（`-ngl`）、CPU MoE、内存映射、多卡拆分模式、MTP 投机解码（`--spec-type draft-mtp`）
+- **核心参数**：上下文窗口、CPU 线程数、Flash Attention、GPU 卸载层数（`-ngl`）、CPU MoE、内存映射、多卡拆分模式
 - **显存与并发调优**：批大小 / 物理批大小（`-b`/`-ub`）、多卡显存比例（`-ts`）、主 GPU（`-mg`）、并发槽位数（`-np`）
 - **上下文缓存**：KV 缓存量化（`-ctk`/`-ctv`）、初始 prompt 保留 token 数（`--keep`）、prompt 缓存上限（`--cache-ram`）、上下文检查点（`--ctx-checkpoints`）、上下文滑动（`--context-shift`）、统一 KV 缓冲（`-kvu`）
+- **投机解码**：投机类型（`--spec-type`，含 `draft-mtp`/`draft-eagle3`/ngram 系列等 11 种）、起草 token 上下限（`--spec-draft-n-max`/`n-min`）、草稿模型（`--spec-draft-model`/`ngl`/`threads`/`cpu-moe`）、强度微调（`--spec-draft-p-split`/`p-min`）、ngram-mod / ngram-simple / ngram-map-k 系列参数、一键默认配置（`--spec-default`）
 - **采样参数**：温度、top-k、top-p、min-p、重复惩罚、随机种子，作为请求未指定时的服务端默认采样值
 - **服务与日志**：Metrics 监控端点（`--metrics`）、服务超时（`--timeout`）、日志写入文件（`--log-file`）、对话模板（`--chat-template`）、思考 token 预算（`--reasoning-budget`）
 - **服务器控制**：监听地址 / 端口、API Key、model alias、CORS、WebUI 开关；一键启动 / 停止 / 重启

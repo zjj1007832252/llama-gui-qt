@@ -59,6 +59,21 @@ constexpr int kThinkBudgetDefault = -1;   // -1 = 不限制
 constexpr int kKeepDefault = 0;           // 0 = 不保留；-1 = 保留全部
 constexpr int kCacheRamDefault = 8192;    // MiB；-1 = 不限制，0 = 关闭
 constexpr int kCtxCheckpointsDefault = 32;
+// 投机解码相关默认值（取自 llama-server --help）
+constexpr int kSpecNMaxDefault = 3;
+constexpr int kSpecNMinDefault = 0;
+constexpr int kSpecDraftThreadsDefault = 0;   // 0 = 与 --threads 相同
+constexpr double kSpecPSplitDefault = 0.10;
+constexpr double kSpecPMinDefault = 0.00;
+constexpr int kNgModNMinDefault = 48;
+constexpr int kNgModNMaxDefault = 64;
+constexpr int kNgModNMatchDefault = 24;
+constexpr int kNgSimpleNDefault = 12;
+constexpr int kNgSimpleMDefault = 48;
+constexpr int kNgSimpleHitsDefault = 1;
+constexpr int kNgMapKNDefault = 12;
+constexpr int kNgMapKMDefault = 48;
+constexpr int kNgMapKHitsDefault = 1;
 
 // 浮点参数去掉多余的小数零，避免命令行出现 0.80 / 1.00 这类写法
 QString fmtNum(double v)
@@ -78,7 +93,7 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(QStringLiteral("llama.cpp本地启动器（多参数）、启动参数管理工具、最优启动参数测试、"
                                  "多尺寸上下文批量测速工具、CPU多线程批量测速工具  @%1")
                       .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy.MM.dd hh:mm"))));
-    resize(1230, 880);
+    resize(1320, 1060);
 
     auto *root = new QHBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -89,11 +104,11 @@ MainWindow::MainWindow(QWidget *parent)
     left->setSpacing(3);
     left->addWidget(createModelPanel());
     // 参数页签需要足够的纵向空间，命令预览面板留够按钮和一屏日志即可
-    left->addWidget(createParamPanel(), 6);
-    left->addWidget(createCmdPanel(), 3);
+    left->addWidget(createParamPanel(), 7);
+    left->addWidget(createCmdPanel(), 2);
 
     auto *leftWrap = new QWidget;
-    leftWrap->setFixedWidth(440);
+    leftWrap->setFixedWidth(500);
     leftWrap->setLayout(left);
 
     auto *right = new QVBoxLayout;
@@ -297,6 +312,9 @@ QWidget *MainWindow::createParamPanel()
         auto *area = new QScrollArea;
         area->setWidgetResizable(true);
         area->setFrameShape(QFrame::NoFrame);
+        // 内容超出可视区时出现纵向滚动条（投机解码页参数较多）
+        area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         area->setWidget(content);
         tabs->setTabToolTip(tabs->addTab(area, title), tip);
     };
@@ -364,20 +382,7 @@ QWidget *MainWindow::createParamPanel()
     addRow(grid, 4, m_noMmapCheck, mmapRow);
 
     m_cpuMoeCheck = new QCheckBox(QStringLiteral("CPU MoE"));
-    // 投机解码：--spec-type draft-mtp + --spec-draft-n-max（默认不启用）
-    m_specCheck = new QCheckBox(QStringLiteral("MTP投机解码"));
-    m_specSpin = new QSpinBox;
-    m_specSpin->setRange(1, 8);
-    m_specSpin->setValue(2);
-    m_specSpin->setFixedWidth(110);
-    auto *specRow = new QWidget;
-    auto *specL = new QHBoxLayout(specRow);
-    specL->setContentsMargins(0, 0, 0, 0);
-    specL->setSpacing(6);
-    specL->addWidget(m_specCheck);
-    specL->addWidget(m_specSpin);
-    specL->addStretch();
-    addRow(grid, 5, m_cpuMoeCheck, specRow);
+    addRow(grid, 5, m_cpuMoeCheck, nullptr);
 
     m_reasoningCheck = new QCheckBox(QStringLiteral("Reasoning"));
     m_reasoningCombo = new QComboBox;
@@ -513,7 +518,227 @@ QWidget *MainWindow::createParamPanel()
                 QStringLiteral("二、上下文缓存：KV 缓存量化、prompt 保留与缓存上限、"
                                "上下文检查点与滑动、统一 KV 缓冲"));
 
-    // 三、采样参数：默认值为 server 内置值，勾选后才输出参数
+    // 三、投机解码：默认值取自 server，勾选后才输出参数
+    auto *bodySpec = new QWidget;
+    auto *gridSpec = new QGridLayout(bodySpec);
+    gridSpec->setContentsMargins(2, 4, 2, 0);
+    gridSpec->setHorizontalSpacing(8);
+    gridSpec->setVerticalSpacing(5);
+
+    int srow = 0;
+    auto addSpecSection = [&](const QString &title) {
+        auto *lb = new QLabel(title);
+        lb->setStyleSheet(QStringLiteral(
+            "background:#f4f4f4;border:1px solid #dcdcdc;border-radius:2px;"
+            "font-size:10pt;font-weight:600;color:#333;padding:2px 6px;"));
+        gridSpec->addWidget(lb, srow++, 0, 1, 2);
+    };
+    auto addSpecRow = [&](QCheckBox *cb, QWidget *editor) {
+        gridSpec->addWidget(cb, srow, 0);
+        if (editor)
+            gridSpec->addWidget(editor, srow, 1);
+        ++srow;
+    };
+
+    addSpecSection(QStringLiteral("投机方式"));
+    m_specTypeCheck = new QCheckBox(QStringLiteral("投机类型"));
+    m_specTypeCheck->setToolTip(QStringLiteral("--spec-type，默认 none（不启用投机解码）"));
+    m_specTypeCombo = new QComboBox;
+    m_specTypeCombo->addItems({QStringLiteral("none"), QStringLiteral("draft-simple"),
+                               QStringLiteral("draft-eagle3"), QStringLiteral("draft-mtp"),
+                               QStringLiteral("draft-dflash"), QStringLiteral("draft-dspark"),
+                               QStringLiteral("ngram-simple"), QStringLiteral("ngram-map-k"),
+                               QStringLiteral("ngram-map-k4v"), QStringLiteral("ngram-mod"),
+                               QStringLiteral("ngram-cache")});
+    m_specTypeCombo->setCurrentText(QStringLiteral("draft-mtp"));
+    m_specTypeCombo->setFixedWidth(200);
+    addSpecRow(m_specTypeCheck, m_specTypeCombo);
+
+    // 起草上限 / 下限 两项并排
+    m_specNMaxCheck = new QCheckBox(QStringLiteral("起草上限"));
+    m_specNMaxCheck->setToolTip(QStringLiteral("--spec-draft-n-max，默认 %1").arg(kSpecNMaxDefault));
+    m_specNMaxSpin = new QSpinBox;
+    m_specNMaxSpin->setRange(0, 1024);
+    m_specNMaxSpin->setValue(kSpecNMaxDefault);
+    m_specNMaxSpin->setFixedWidth(92);
+
+    m_specNMinCheck = new QCheckBox(QStringLiteral("起草下限"));
+    m_specNMinCheck->setToolTip(QStringLiteral("--spec-draft-n-min，默认 %1").arg(kSpecNMinDefault));
+    m_specNMinSpin = new QSpinBox;
+    m_specNMinSpin->setRange(0, 1024);
+    m_specNMinSpin->setValue(kSpecNMinDefault);
+    m_specNMinSpin->setFixedWidth(92);
+
+    m_specDefaultCheck = new QCheckBox(QStringLiteral("一键默认投机配置"));
+    m_specDefaultCheck->setToolTip(QStringLiteral("--spec-default，启用默认投机解码配置"));
+
+    gridSpec->addWidget(m_specNMaxCheck, srow, 0);
+    gridSpec->addWidget(m_specNMaxSpin, srow, 1);
+    gridSpec->addWidget(m_specNMinCheck, srow, 2);
+    gridSpec->addWidget(m_specNMinSpin, srow, 3);
+    ++srow;
+    addSpecRow(m_specDefaultCheck, nullptr);
+
+    addSpecSection(QStringLiteral("草稿模型"));
+    m_specModelCheck = new QCheckBox(QStringLiteral("草稿模型路径"));
+    m_specModelCheck->setToolTip(QStringLiteral("-md/--spec-draft-model，默认不使用草稿模型"));
+    m_specModelEdit = new QLineEdit;
+    m_specModelEdit->setPlaceholderText(QStringLiteral("draft 模型 .gguf 路径"));
+    m_specModelEdit->setFixedWidth(200);
+    addSpecRow(m_specModelCheck, m_specModelEdit);
+
+    m_specNglCheck = new QCheckBox(QStringLiteral("草稿模型卸载层数"));
+    m_specNglCheck->setToolTip(QStringLiteral("-ngld/--spec-draft-ngl，默认 auto"));
+    m_specNglEdit = new QLineEdit;
+    m_specNglEdit->setPlaceholderText(QStringLiteral("数字 / auto / all"));
+    m_specNglEdit->setFixedWidth(200);
+    addSpecRow(m_specNglCheck, m_specNglEdit);
+
+    m_specThreadsCheck = new QCheckBox(QStringLiteral("草稿模型线程数"));
+    m_specThreadsCheck->setToolTip(QStringLiteral("-td/--spec-draft-threads，默认与 --threads 相同"));
+    m_specThreadsSpin = new QSpinBox;
+    m_specThreadsSpin->setRange(1, 1024);
+    m_specThreadsSpin->setValue(12);
+    m_specThreadsSpin->setFixedWidth(92);
+
+    m_specCpuMoeCheck = new QCheckBox(QStringLiteral("草稿CPU MoE"));
+    m_specCpuMoeCheck->setToolTip(
+        QStringLiteral("-cmoed/--spec-draft-cpu-moe，草稿模型的 MoE 权重全部放 CPU"));
+
+    gridSpec->addWidget(m_specThreadsCheck, srow, 0);
+    gridSpec->addWidget(m_specThreadsSpin, srow, 1);
+    gridSpec->addWidget(m_specCpuMoeCheck, srow, 2);
+    ++srow;
+
+    addSpecSection(QStringLiteral("强度微调"));
+    m_specPSplitSpin = new QDoubleSpinBox;
+    m_specPSplitSpin->setRange(0.0, 1.0);
+    m_specPSplitSpin->setSingleStep(0.05);
+    m_specPSplitSpin->setDecimals(2);
+    m_specPSplitSpin->setValue(kSpecPSplitDefault);
+    m_specPSplitSpin->setFixedWidth(110);
+    m_specPSplitCheck = new QCheckBox(QStringLiteral("分裂概率"));
+    m_specPSplitCheck->setToolTip(
+        QStringLiteral("--spec-draft-p-split，默认 %1").arg(fmtNum(kSpecPSplitDefault)));
+
+    m_specPMinSpin = new QDoubleSpinBox;
+    m_specPMinSpin->setRange(0.0, 1.0);
+    m_specPMinSpin->setSingleStep(0.05);
+    m_specPMinSpin->setDecimals(2);
+    m_specPMinSpin->setValue(kSpecPMinDefault);
+    m_specPMinSpin->setFixedWidth(110);
+    m_specPMinCheck = new QCheckBox(QStringLiteral("最低投机概率"));
+    m_specPMinCheck->setToolTip(
+        QStringLiteral("--spec-draft-p-min，默认 %1").arg(fmtNum(kSpecPMinDefault)));
+
+    gridSpec->addWidget(m_specPSplitCheck, srow, 0);
+    gridSpec->addWidget(m_specPSplitSpin, srow, 1);
+    gridSpec->addWidget(m_specPMinCheck, srow, 2);
+    gridSpec->addWidget(m_specPMinSpin, srow, 3);
+    ++srow;
+
+    addSpecSection(QStringLiteral("ngram-mod"));
+    m_ngModNMinSpin = new QSpinBox;
+    m_ngModNMinSpin->setRange(0, 100000);
+    m_ngModNMinSpin->setValue(kNgModNMinDefault);
+    m_ngModNMinSpin->setFixedWidth(110);
+    m_ngModNMinCheck = new QCheckBox(QStringLiteral("最小token"));
+    m_ngModNMinCheck->setToolTip(QStringLiteral("--spec-ngram-mod-n-min，默认 %1").arg(kNgModNMinDefault));
+
+    m_ngModNMaxSpin = new QSpinBox;
+    m_ngModNMaxSpin->setRange(0, 100000);
+    m_ngModNMaxSpin->setValue(kNgModNMaxDefault);
+    m_ngModNMaxSpin->setFixedWidth(110);
+    m_ngModNMaxCheck = new QCheckBox(QStringLiteral("最大token"));
+    m_ngModNMaxCheck->setToolTip(QStringLiteral("--spec-ngram-mod-n-max，默认 %1").arg(kNgModNMaxDefault));
+
+    m_ngModNMatchSpin = new QSpinBox;
+    m_ngModNMatchSpin->setRange(0, 100000);
+    m_ngModNMatchSpin->setValue(kNgModNMatchDefault);
+    m_ngModNMatchSpin->setFixedWidth(110);
+    m_ngModNMatchCheck = new QCheckBox(QStringLiteral("查找长度"));
+    m_ngModNMatchCheck->setToolTip(
+        QStringLiteral("--spec-ngram-mod-n-match，默认 %1").arg(kNgModNMatchDefault));
+
+    gridSpec->addWidget(m_ngModNMinCheck, srow, 0);
+    gridSpec->addWidget(m_ngModNMinSpin, srow, 1);
+    gridSpec->addWidget(m_ngModNMaxCheck, srow, 2);
+    gridSpec->addWidget(m_ngModNMaxSpin, srow, 3);
+    ++srow;
+    addSpecRow(m_ngModNMatchCheck, m_ngModNMatchSpin);
+
+    addSpecSection(QStringLiteral("ngram-simple"));
+    m_ngSimpleNSpin = new QSpinBox;
+    m_ngSimpleNSpin->setRange(0, 100000);
+    m_ngSimpleNSpin->setValue(kNgSimpleNDefault);
+    m_ngSimpleNSpin->setFixedWidth(110);
+    m_ngSimpleNCheck = new QCheckBox(QStringLiteral("查找长度 N"));
+    m_ngSimpleNCheck->setToolTip(
+        QStringLiteral("--spec-ngram-simple-size-n，默认 %1").arg(kNgSimpleNDefault));
+
+    m_ngSimpleMSpin = new QSpinBox;
+    m_ngSimpleMSpin->setRange(0, 100000);
+    m_ngSimpleMSpin->setValue(kNgSimpleMDefault);
+    m_ngSimpleMSpin->setFixedWidth(110);
+    m_ngSimpleMCheck = new QCheckBox(QStringLiteral("起草长度 M"));
+    m_ngSimpleMCheck->setToolTip(
+        QStringLiteral("--spec-ngram-simple-size-m，默认 %1").arg(kNgSimpleMDefault));
+
+    m_ngSimpleHitsSpin = new QSpinBox;
+    m_ngSimpleHitsSpin->setRange(0, 100000);
+    m_ngSimpleHitsSpin->setValue(kNgSimpleHitsDefault);
+    m_ngSimpleHitsSpin->setFixedWidth(110);
+    m_ngSimpleHitsCheck = new QCheckBox(QStringLiteral("最小命中次数"));
+    m_ngSimpleHitsCheck->setToolTip(
+        QStringLiteral("--spec-ngram-simple-min-hits，默认 %1").arg(kNgSimpleHitsDefault));
+
+    gridSpec->addWidget(m_ngSimpleNCheck, srow, 0);
+    gridSpec->addWidget(m_ngSimpleNSpin, srow, 1);
+    gridSpec->addWidget(m_ngSimpleMCheck, srow, 2);
+    gridSpec->addWidget(m_ngSimpleMSpin, srow, 3);
+    ++srow;
+    addSpecRow(m_ngSimpleHitsCheck, m_ngSimpleHitsSpin);
+
+    addSpecSection(QStringLiteral("ngram-map-k"));
+    m_ngMapKNSpin = new QSpinBox;
+    m_ngMapKNSpin->setRange(0, 100000);
+    m_ngMapKNSpin->setValue(kNgMapKNDefault);
+    m_ngMapKNSpin->setFixedWidth(110);
+    m_ngMapKNCheck = new QCheckBox(QStringLiteral("查找长度 N"));
+    m_ngMapKNCheck->setToolTip(
+        QStringLiteral("--spec-ngram-map-k-size-n，默认 %1").arg(kNgMapKNDefault));
+
+    m_ngMapKMSpin = new QSpinBox;
+    m_ngMapKMSpin->setRange(0, 100000);
+    m_ngMapKMSpin->setValue(kNgMapKMDefault);
+    m_ngMapKMSpin->setFixedWidth(110);
+    m_ngMapKMCheck = new QCheckBox(QStringLiteral("起草长度 M"));
+    m_ngMapKMCheck->setToolTip(
+        QStringLiteral("--spec-ngram-map-k-size-m，默认 %1").arg(kNgMapKMDefault));
+
+    m_ngMapKHitsSpin = new QSpinBox;
+    m_ngMapKHitsSpin->setRange(0, 100000);
+    m_ngMapKHitsSpin->setValue(kNgMapKHitsDefault);
+    m_ngMapKHitsSpin->setFixedWidth(110);
+    m_ngMapKHitsCheck = new QCheckBox(QStringLiteral("最小命中次数"));
+    m_ngMapKHitsCheck->setToolTip(
+        QStringLiteral("--spec-ngram-map-k-min-hits，默认 %1").arg(kNgMapKHitsDefault));
+
+    gridSpec->addWidget(m_ngMapKNCheck, srow, 0);
+    gridSpec->addWidget(m_ngMapKNSpin, srow, 1);
+    gridSpec->addWidget(m_ngMapKMCheck, srow, 2);
+    gridSpec->addWidget(m_ngMapKMSpin, srow, 3);
+    ++srow;
+    addSpecRow(m_ngMapKHitsCheck, m_ngMapKHitsSpin);
+
+    gridSpec->setColumnStretch(1, 1);
+    gridSpec->setColumnStretch(3, 1);
+    gridSpec->setRowStretch(srow, 1);
+
+    addParamTab(bodySpec, QStringLiteral("3、投机解码"),
+                QStringLiteral("三、投机解码：投机方式、草稿模型、强度微调、ngram 系列参数"));
+
+    // 四、采样参数：默认值为 server 内置值，勾选后才输出参数
     auto *body3 = new QWidget;
     auto *grid3 = new QGridLayout(body3);
     grid3->setContentsMargins(2, 4, 2, 0);
@@ -584,8 +809,8 @@ QWidget *MainWindow::createParamPanel()
     grid3->setColumnStretch(1, 1);
     grid3->setRowStretch(6, 1);
 
-    addParamTab(body3, QStringLiteral("3、采样参数"),
-                QStringLiteral("三、采样参数：请求未指定时采用的服务端默认采样值"));
+    addParamTab(body3, QStringLiteral("4、采样参数"),
+                QStringLiteral("四、采样参数：请求未指定时采用的服务端默认采样值"));
 
     // 四、服务与日志（默认值 = server 内置值）
     auto *body4 = new QWidget;
@@ -642,8 +867,8 @@ QWidget *MainWindow::createParamPanel()
     grid4->setColumnStretch(1, 1);
     grid4->setRowStretch(5, 1);
 
-    addParamTab(body4, QStringLiteral("4、服务日志"),
-                QStringLiteral("四、服务与日志：监控端点、超时、日志文件、对话模板、思考预算"));
+    addParamTab(body4, QStringLiteral("5、服务日志"),
+                QStringLiteral("五、服务与日志：监控端点、超时、日志文件、对话模板、思考预算"));
 
     outer->addWidget(tabs, 1);
 
@@ -844,10 +1069,17 @@ void MainWindow::wireLogic()
 {
     auto regen = [this] { refreshAll(); };
     for (QCheckBox *cb : {m_ctxCheck, m_threadsCheck, m_flashCheck, m_nglCheck,
-                          m_noMmapCheck, m_cpuMoeCheck, m_specCheck, m_reasoningCheck,
+                          m_noMmapCheck, m_cpuMoeCheck, m_reasoningCheck,
                           m_splitCheck, m_mmapLoadCheck, m_cacheKCheck, m_cacheVCheck,
                           m_keepCheck, m_cacheRamCheck, m_ctxCpCheck, m_ctxShiftCheck,
                           m_kvuCheck,
+                          m_specTypeCheck, m_specNMaxCheck, m_specNMinCheck,
+                          m_specModelCheck, m_specNglCheck, m_specThreadsCheck,
+                          m_specCpuMoeCheck, m_specPSplitCheck, m_specPMinCheck,
+                          m_ngModNMinCheck, m_ngModNMaxCheck, m_ngModNMatchCheck,
+                          m_ngSimpleNCheck, m_ngSimpleMCheck, m_ngSimpleHitsCheck,
+                          m_ngMapKNCheck, m_ngMapKMCheck, m_ngMapKHitsCheck,
+                          m_specDefaultCheck,
                           m_batchCheck, m_ubatchCheck, m_tsCheck, m_mainGpuCheck,
                           m_parallelCheck, m_tempCheck, m_topKCheck, m_topPCheck,
                           m_minPCheck, m_repPenCheck, m_seedCheck, m_metricsCheck,
@@ -857,18 +1089,24 @@ void MainWindow::wireLogic()
         refreshCtxInfo();
         refreshCmdInfo();
     });
-    for (QSpinBox *sb : {m_threadsSpin, m_specSpin, m_nglSpin, m_batchSpin, m_ubatchSpin,
+    for (QSpinBox *sb : {m_threadsSpin, m_nglSpin, m_batchSpin, m_ubatchSpin,
                          m_mainGpuSpin, m_parallelSpin, m_topKSpin, m_seedSpin,
                          m_timeoutSpin, m_thinkBudgetSpin, m_keepSpin, m_cacheRamSpin,
-                         m_ctxCpSpin})
+                         m_ctxCpSpin, m_specNMaxSpin, m_specNMinSpin, m_specThreadsSpin,
+                         m_ngModNMinSpin, m_ngModNMaxSpin, m_ngModNMatchSpin,
+                         m_ngSimpleNSpin, m_ngSimpleMSpin, m_ngSimpleHitsSpin,
+                         m_ngMapKNSpin, m_ngMapKMSpin, m_ngMapKHitsSpin})
         connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
-    for (QDoubleSpinBox *sb : {m_tempSpin, m_topPSpin, m_minPSpin, m_repPenSpin})
+    for (QDoubleSpinBox *sb : {m_tempSpin, m_topPSpin, m_minPSpin, m_repPenSpin,
+                              m_specPSplitSpin, m_specPMinSpin})
         connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, regen);
     for (QComboBox *cb : {m_flashCombo, m_reasoningCombo, m_splitCombo,
-                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo})
+                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo, m_specTypeCombo})
         connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, regen);
     connect(m_tsEdit, &QLineEdit::textChanged, this, regen);
     connect(m_logFileEdit, &QLineEdit::textChanged, this, regen);
+    connect(m_specModelEdit, &QLineEdit::textChanged, this, regen);
+    connect(m_specNglEdit, &QLineEdit::textChanged, this, regen);
 
     connect(m_toolPath, &QLineEdit::editingFinished, this, [this] { refreshCmdInfo(); });
     connect(m_modelDir, &QLineEdit::editingFinished, this, [this] { scanModels(); });
@@ -1007,10 +1245,48 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("--mmap");
     if (m_cpuMoeCheck->isChecked())
         args << QStringLiteral("--cpu-moe");
-    if (m_specCheck->isChecked()) {
-        args << QStringLiteral("--spec-type") << QStringLiteral("draft-mtp");
-        args << QStringLiteral("--spec-draft-n-max") << QString::number(m_specSpin->value());
-    }
+
+    // 三、投机解码
+    if (m_specTypeCheck->isChecked())
+        args << QStringLiteral("--spec-type") << m_specTypeCombo->currentText();
+    if (m_specNMaxCheck->isChecked())
+        args << QStringLiteral("--spec-draft-n-max") << QString::number(m_specNMaxSpin->value());
+    if (m_specNMinCheck->isChecked())
+        args << QStringLiteral("--spec-draft-n-min") << QString::number(m_specNMinSpin->value());
+    if (m_specModelCheck->isChecked() && !m_specModelEdit->text().trimmed().isEmpty())
+        args << QStringLiteral("--spec-draft-model")
+             << QDir::toNativeSeparators(m_specModelEdit->text().trimmed());
+    if (m_specNglCheck->isChecked() && !m_specNglEdit->text().trimmed().isEmpty())
+        args << QStringLiteral("--spec-draft-ngl") << m_specNglEdit->text().trimmed();
+    if (m_specThreadsCheck->isChecked())
+        args << QStringLiteral("--spec-draft-threads")
+             << QString::number(m_specThreadsSpin->value());
+    if (m_specCpuMoeCheck->isChecked())
+        args << QStringLiteral("--spec-draft-cpu-moe");
+    if (m_specPSplitCheck->isChecked())
+        args << QStringLiteral("--spec-draft-p-split") << fmtNum(m_specPSplitSpin->value());
+    if (m_specPMinCheck->isChecked())
+        args << QStringLiteral("--spec-draft-p-min") << fmtNum(m_specPMinSpin->value());
+    if (m_ngModNMinCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-mod-n-min") << QString::number(m_ngModNMinSpin->value());
+    if (m_ngModNMaxCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-mod-n-max") << QString::number(m_ngModNMaxSpin->value());
+    if (m_ngModNMatchCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-mod-n-match") << QString::number(m_ngModNMatchSpin->value());
+    if (m_ngSimpleNCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-simple-size-n") << QString::number(m_ngSimpleNSpin->value());
+    if (m_ngSimpleMCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-simple-size-m") << QString::number(m_ngSimpleMSpin->value());
+    if (m_ngSimpleHitsCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-simple-min-hits") << QString::number(m_ngSimpleHitsSpin->value());
+    if (m_ngMapKNCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-map-k-size-n") << QString::number(m_ngMapKNSpin->value());
+    if (m_ngMapKMCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-map-k-size-m") << QString::number(m_ngMapKMSpin->value());
+    if (m_ngMapKHitsCheck->isChecked())
+        args << QStringLiteral("--spec-ngram-map-k-min-hits") << QString::number(m_ngMapKHitsSpin->value());
+    if (m_specDefaultCheck->isChecked())
+        args << QStringLiteral("--spec-default");
     if (m_reasoningCheck->isChecked())
         args << QStringLiteral("--reasoning") << m_reasoningCombo->currentText();
 
@@ -1105,6 +1381,90 @@ void MainWindow::refreshCmdInfo()
         !m_ctxCpCheck->isChecked() && !m_ctxShiftCheck->isChecked() && !m_kvuCheck->isChecked())
         text += QStringLiteral("(未启用，使用 server 默认 f16 缓存与默认缓存策略)\n");
     text += QLatin1Char('\n');
+
+    text += QStringLiteral("# 三、投机解码\n");
+    bool anySpec = false;
+    if (m_specTypeCheck->isChecked()) {
+        text += QStringLiteral("--spec-type %1\n").arg(m_specTypeCombo->currentText());
+        anySpec = true;
+    }
+    if (m_specNMaxCheck->isChecked()) {
+        text += QStringLiteral("--spec-draft-n-max %1\n").arg(m_specNMaxSpin->value());
+        anySpec = true;
+    }
+    if (m_specNMinCheck->isChecked()) {
+        text += QStringLiteral("--spec-draft-n-min %1\n").arg(m_specNMinSpin->value());
+        anySpec = true;
+    }
+    if (m_specModelCheck->isChecked() && !m_specModelEdit->text().trimmed().isEmpty()) {
+        text += QStringLiteral("--spec-draft-model %1\n")
+                    .arg(QDir::toNativeSeparators(m_specModelEdit->text().trimmed()));
+        anySpec = true;
+    }
+    if (m_specNglCheck->isChecked() && !m_specNglEdit->text().trimmed().isEmpty()) {
+        text += QStringLiteral("--spec-draft-ngl %1\n").arg(m_specNglEdit->text().trimmed());
+        anySpec = true;
+    }
+    if (m_specThreadsCheck->isChecked()) {
+        text += QStringLiteral("--spec-draft-threads %1\n").arg(m_specThreadsSpin->value());
+        anySpec = true;
+    }
+    if (m_specCpuMoeCheck->isChecked()) {
+        text += QStringLiteral("--spec-draft-cpu-moe\n");
+        anySpec = true;
+    }
+    if (m_specPSplitCheck->isChecked()) {
+        text += QStringLiteral("--spec-draft-p-split %1\n").arg(fmtNum(m_specPSplitSpin->value()));
+        anySpec = true;
+    }
+    if (m_specPMinCheck->isChecked()) {
+        text += QStringLiteral("--spec-draft-p-min %1\n").arg(fmtNum(m_specPMinSpin->value()));
+        anySpec = true;
+    }
+    if (m_ngModNMinCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-mod-n-min %1\n").arg(m_ngModNMinSpin->value());
+        anySpec = true;
+    }
+    if (m_ngModNMaxCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-mod-n-max %1\n").arg(m_ngModNMaxSpin->value());
+        anySpec = true;
+    }
+    if (m_ngModNMatchCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-mod-n-match %1\n").arg(m_ngModNMatchSpin->value());
+        anySpec = true;
+    }
+    if (m_ngSimpleNCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-simple-size-n %1\n").arg(m_ngSimpleNSpin->value());
+        anySpec = true;
+    }
+    if (m_ngSimpleMCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-simple-size-m %1\n").arg(m_ngSimpleMSpin->value());
+        anySpec = true;
+    }
+    if (m_ngSimpleHitsCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-simple-min-hits %1\n").arg(m_ngSimpleHitsSpin->value());
+        anySpec = true;
+    }
+    if (m_ngMapKNCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-map-k-size-n %1\n").arg(m_ngMapKNSpin->value());
+        anySpec = true;
+    }
+    if (m_ngMapKMCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-map-k-size-m %1\n").arg(m_ngMapKMSpin->value());
+        anySpec = true;
+    }
+    if (m_ngMapKHitsCheck->isChecked()) {
+        text += QStringLiteral("--spec-ngram-map-k-min-hits %1\n").arg(m_ngMapKHitsSpin->value());
+        anySpec = true;
+    }
+    if (m_specDefaultCheck->isChecked()) {
+        text += QStringLiteral("--spec-default\n");
+        anySpec = true;
+    }
+    if (!anySpec)
+        text += QStringLiteral("(未启用，使用 server 默认投机解码配置)\n");
+    text += QLatin1Char('\n');
+
     text += QStringLiteral("# 一、核心基础参数\n");
     if (m_nglCheck->isChecked())
         text += QStringLiteral("--n-gpu-layers %1\n").arg(m_nglSpin->value());
@@ -1122,10 +1482,6 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--mmap\n");
     if (m_cpuMoeCheck->isChecked())
         text += QStringLiteral("--cpu-moe\n");
-    if (m_specCheck->isChecked()) {
-        text += QStringLiteral("--spec-type draft-mtp\n");
-        text += QStringLiteral("--spec-draft-n-max %1\n").arg(m_specSpin->value());
-    }
     if (m_reasoningCheck->isChecked())
         text += QStringLiteral("--reasoning %1\n").arg(m_reasoningCombo->currentText());
     if (m_batchCheck->isChecked())
@@ -1142,7 +1498,7 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--mmproj %1\n").arg(QDir::toNativeSeparators(m_mmprojPath->text().trimmed()));
     text += QLatin1Char('\n');
 
-    text += QStringLiteral("# 三、采样参数\n");
+    text += QStringLiteral("# 四、采样参数\n");
     bool anySampler = false;
     if (m_tempCheck->isChecked()) {
         text += QStringLiteral("--temp %1\n").arg(fmtNum(m_tempSpin->value()));
@@ -1172,7 +1528,7 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("(未启用，使用 server 默认采样参数)\n");
     text += QLatin1Char('\n');
 
-    text += QStringLiteral("# 四、网络与服务参数\n");
+    text += QStringLiteral("# 五、网络与服务参数\n");
     text += QStringLiteral("--host %1\n").arg(m_localOnlyCheck->isChecked()
                                                   ? QStringLiteral("127.0.0.1")
                                                   : m_listenEdit->text());
@@ -1439,8 +1795,47 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("ngl"), m_nglSpin->value());
     o.insert(QStringLiteral("noMmap"), m_noMmapCheck->isChecked());
     o.insert(QStringLiteral("cpuMoe"), m_cpuMoeCheck->isChecked());
-    o.insert(QStringLiteral("specEnabled"), m_specCheck->isChecked());
-    o.insert(QStringLiteral("specDraftNMax"), m_specSpin->value());
+    o.insert(QStringLiteral("specEnabled"), m_specTypeCheck->isChecked());
+    o.insert(QStringLiteral("specDraftNMax"), m_specNMaxSpin->value());
+    // 投机解码：仅保存非默认取值
+    if (m_specTypeCheck->isChecked())
+        o.insert(QStringLiteral("specType"), m_specTypeCombo->currentText());
+    if (m_specNMaxCheck->isChecked() && m_specNMaxSpin->value() != kSpecNMaxDefault)
+        o.insert(QStringLiteral("specNMax"), m_specNMaxSpin->value());
+    if (m_specNMinCheck->isChecked() && m_specNMinSpin->value() != kSpecNMinDefault)
+        o.insert(QStringLiteral("specNMin"), m_specNMinSpin->value());
+    if (m_specModelCheck->isChecked() && !m_specModelEdit->text().trimmed().isEmpty())
+        o.insert(QStringLiteral("specModel"), m_specModelEdit->text().trimmed());
+    if (m_specNglCheck->isChecked() && !m_specNglEdit->text().trimmed().isEmpty())
+        o.insert(QStringLiteral("specNgl"), m_specNglEdit->text().trimmed());
+    if (m_specThreadsCheck->isChecked())
+        o.insert(QStringLiteral("specThreads"), m_specThreadsSpin->value());
+    if (m_specCpuMoeCheck->isChecked())
+        o.insert(QStringLiteral("specCpuMoe"), true);
+    if (m_specPSplitCheck->isChecked() && !qFuzzyCompare(m_specPSplitSpin->value(), kSpecPSplitDefault))
+        o.insert(QStringLiteral("specPSplit"), m_specPSplitSpin->value());
+    if (m_specPMinCheck->isChecked() && !qFuzzyCompare(m_specPMinSpin->value(), kSpecPMinDefault))
+        o.insert(QStringLiteral("specPMin"), m_specPMinSpin->value());
+    if (m_ngModNMinCheck->isChecked() && m_ngModNMinSpin->value() != kNgModNMinDefault)
+        o.insert(QStringLiteral("ngModNMin"), m_ngModNMinSpin->value());
+    if (m_ngModNMaxCheck->isChecked() && m_ngModNMaxSpin->value() != kNgModNMaxDefault)
+        o.insert(QStringLiteral("ngModNMax"), m_ngModNMaxSpin->value());
+    if (m_ngModNMatchCheck->isChecked() && m_ngModNMatchSpin->value() != kNgModNMatchDefault)
+        o.insert(QStringLiteral("ngModNMatch"), m_ngModNMatchSpin->value());
+    if (m_ngSimpleNCheck->isChecked() && m_ngSimpleNSpin->value() != kNgSimpleNDefault)
+        o.insert(QStringLiteral("ngSimpleN"), m_ngSimpleNSpin->value());
+    if (m_ngSimpleMCheck->isChecked() && m_ngSimpleMSpin->value() != kNgSimpleMDefault)
+        o.insert(QStringLiteral("ngSimpleM"), m_ngSimpleMSpin->value());
+    if (m_ngSimpleHitsCheck->isChecked() && m_ngSimpleHitsSpin->value() != kNgSimpleHitsDefault)
+        o.insert(QStringLiteral("ngSimpleHits"), m_ngSimpleHitsSpin->value());
+    if (m_ngMapKNCheck->isChecked() && m_ngMapKNSpin->value() != kNgMapKNDefault)
+        o.insert(QStringLiteral("ngMapKN"), m_ngMapKNSpin->value());
+    if (m_ngMapKMCheck->isChecked() && m_ngMapKMSpin->value() != kNgMapKMDefault)
+        o.insert(QStringLiteral("ngMapKM"), m_ngMapKMSpin->value());
+    if (m_ngMapKHitsCheck->isChecked() && m_ngMapKHitsSpin->value() != kNgMapKHitsDefault)
+        o.insert(QStringLiteral("ngMapKHits"), m_ngMapKHitsSpin->value());
+    if (m_specDefaultCheck->isChecked())
+        o.insert(QStringLiteral("specDefault"), true);
     o.insert(QStringLiteral("reasoningEnabled"), m_reasoningCheck->isChecked());
     o.insert(QStringLiteral("reasoning"), m_reasoningCombo->currentText());
     o.insert(QStringLiteral("splitEnabled"), m_splitCheck->isChecked());
@@ -1544,8 +1939,46 @@ void MainWindow::loadParams()
     m_nglSpin->setValue(o.value(QStringLiteral("ngl")).toInt(99));
     m_noMmapCheck->setChecked(o.value(QStringLiteral("noMmap")).toBool());
     m_cpuMoeCheck->setChecked(o.value(QStringLiteral("cpuMoe")).toBool());
-    m_specCheck->setChecked(o.value(QStringLiteral("specEnabled")).toBool(false));
-    m_specSpin->setValue(o.value(QStringLiteral("specDraftNMax")).toInt(2));
+    // 投机解码：兼容旧配置的 specEnabled/specDraftNMax（旧版固定 draft-mtp）
+    const bool legacySpec = o.value(QStringLiteral("specEnabled")).toBool(false);
+    m_specTypeCheck->setChecked(legacySpec || o.contains(QStringLiteral("specType")));
+    m_specTypeCombo->setCurrentText(
+        o.value(QStringLiteral("specType")).toString(QStringLiteral("draft-mtp")));
+    m_specNMaxCheck->setChecked(o.contains(QStringLiteral("specNMax")) || legacySpec);
+    m_specNMaxSpin->setValue(o.value(QStringLiteral("specNMax"))
+                                 .toInt(o.value(QStringLiteral("specDraftNMax")).toInt(kSpecNMaxDefault)));
+    m_specNMinCheck->setChecked(o.contains(QStringLiteral("specNMin")));
+    m_specNMinSpin->setValue(o.value(QStringLiteral("specNMin")).toInt(kSpecNMinDefault));
+    m_specModelCheck->setChecked(o.contains(QStringLiteral("specModel")));
+    m_specModelEdit->setText(o.value(QStringLiteral("specModel")).toString());
+    m_specNglCheck->setChecked(o.contains(QStringLiteral("specNgl")));
+    m_specNglEdit->setText(o.value(QStringLiteral("specNgl")).toString());
+    m_specThreadsCheck->setChecked(o.contains(QStringLiteral("specThreads")));
+    m_specThreadsSpin->setValue(o.value(QStringLiteral("specThreads")).toInt(12));
+    m_specCpuMoeCheck->setChecked(o.value(QStringLiteral("specCpuMoe")).toBool(false));
+    m_specPSplitCheck->setChecked(o.contains(QStringLiteral("specPSplit")));
+    m_specPSplitSpin->setValue(o.value(QStringLiteral("specPSplit")).toDouble(kSpecPSplitDefault));
+    m_specPMinCheck->setChecked(o.contains(QStringLiteral("specPMin")));
+    m_specPMinSpin->setValue(o.value(QStringLiteral("specPMin")).toDouble(kSpecPMinDefault));
+    m_ngModNMinCheck->setChecked(o.contains(QStringLiteral("ngModNMin")));
+    m_ngModNMinSpin->setValue(o.value(QStringLiteral("ngModNMin")).toInt(kNgModNMinDefault));
+    m_ngModNMaxCheck->setChecked(o.contains(QStringLiteral("ngModNMax")));
+    m_ngModNMaxSpin->setValue(o.value(QStringLiteral("ngModNMax")).toInt(kNgModNMaxDefault));
+    m_ngModNMatchCheck->setChecked(o.contains(QStringLiteral("ngModNMatch")));
+    m_ngModNMatchSpin->setValue(o.value(QStringLiteral("ngModNMatch")).toInt(kNgModNMatchDefault));
+    m_ngSimpleNCheck->setChecked(o.contains(QStringLiteral("ngSimpleN")));
+    m_ngSimpleNSpin->setValue(o.value(QStringLiteral("ngSimpleN")).toInt(kNgSimpleNDefault));
+    m_ngSimpleMCheck->setChecked(o.contains(QStringLiteral("ngSimpleM")));
+    m_ngSimpleMSpin->setValue(o.value(QStringLiteral("ngSimpleM")).toInt(kNgSimpleMDefault));
+    m_ngSimpleHitsCheck->setChecked(o.contains(QStringLiteral("ngSimpleHits")));
+    m_ngSimpleHitsSpin->setValue(o.value(QStringLiteral("ngSimpleHits")).toInt(kNgSimpleHitsDefault));
+    m_ngMapKNCheck->setChecked(o.contains(QStringLiteral("ngMapKN")));
+    m_ngMapKNSpin->setValue(o.value(QStringLiteral("ngMapKN")).toInt(kNgMapKNDefault));
+    m_ngMapKMCheck->setChecked(o.contains(QStringLiteral("ngMapKM")));
+    m_ngMapKMSpin->setValue(o.value(QStringLiteral("ngMapKM")).toInt(kNgMapKMDefault));
+    m_ngMapKHitsCheck->setChecked(o.contains(QStringLiteral("ngMapKHits")));
+    m_ngMapKHitsSpin->setValue(o.value(QStringLiteral("ngMapKHits")).toInt(kNgMapKHitsDefault));
+    m_specDefaultCheck->setChecked(o.value(QStringLiteral("specDefault")).toBool(false));
     m_reasoningCheck->setChecked(o.value(QStringLiteral("reasoningEnabled")).toBool());
     m_reasoningCombo->setCurrentText(o.value(QStringLiteral("reasoning")).toString(QStringLiteral("auto")));
     m_splitCheck->setChecked(o.value(QStringLiteral("splitEnabled")).toBool());
@@ -1661,13 +2094,21 @@ void MainWindow::parseArgsText()
             {QStringLiteral("cache-ram"), QStringLiteral("cacheram")},
             {QStringLiteral("ctx-checkpoints"), QStringLiteral("ctxcp")},
             {QStringLiteral("swa-checkpoints"), QStringLiteral("ctxcp")},
+            {QStringLiteral("model-draft"), QStringLiteral("md")},
+            {QStringLiteral("gpu-layers-draft"), QStringLiteral("ngld")},
+            {QStringLiteral("n-gpu-layers-draft"), QStringLiteral("ngld")},
+            {QStringLiteral("threads-draft"), QStringLiteral("td")},
+            {QStringLiteral("draft-p-split"), QStringLiteral("spec-draft-p-split")},
+            {QStringLiteral("draft-p-min"), QStringLiteral("spec-draft-p-min")},
         };
         if (alias.contains(key))
             key = alias[key];
         if (key == QLatin1String("no-webui") || key == QLatin1String("no-mmap") ||
             key == QLatin1String("mmap") || key == QLatin1String("cpu-moe") ||
             key == QLatin1String("metrics") || key == QLatin1String("context-shift") ||
-            key == QLatin1String("kv-unified") || key == QLatin1String("kvu")) {
+            key == QLatin1String("kv-unified") || key == QLatin1String("kvu") ||
+            key == QLatin1String("spec-default") || key == QLatin1String("spec-draft-cpu-moe") ||
+            key == QLatin1String("cmoed")) {
             flags << key;
         } else if (i + 1 < tokens.size() && !tokens[i + 1].startsWith(QLatin1Char('-'))) {
             opt.insert(key, tokens[++i]);
@@ -1740,10 +2181,81 @@ void MainWindow::parseArgsText()
     if (flags.contains(QLatin1String("mmap")))
         m_mmapLoadCheck->setChecked(true);
     if (opt.contains(QStringLiteral("spec-type"))) {
-        m_specCheck->setChecked(true);
-        if (opt.contains(QStringLiteral("spec-draft-n-max")))
-            m_specSpin->setValue(opt[QStringLiteral("spec-draft-n-max")].toInt());
+        m_specTypeCheck->setChecked(true);
+        m_specTypeCombo->setCurrentText(opt[QStringLiteral("spec-type")]);
     }
+    if (opt.contains(QStringLiteral("spec-draft-n-max"))) {
+        m_specNMaxCheck->setChecked(true);
+        m_specNMaxSpin->setValue(opt[QStringLiteral("spec-draft-n-max")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-draft-n-min"))) {
+        m_specNMinCheck->setChecked(true);
+        m_specNMinSpin->setValue(opt[QStringLiteral("spec-draft-n-min")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-draft-model")) || opt.contains(QStringLiteral("md"))) {
+        m_specModelCheck->setChecked(true);
+        m_specModelEdit->setText(QDir::toNativeSeparators(
+            opt.value(QStringLiteral("spec-draft-model"), opt.value(QStringLiteral("md")))));
+    }
+    if (opt.contains(QStringLiteral("spec-draft-ngl")) || opt.contains(QStringLiteral("ngld"))) {
+        m_specNglCheck->setChecked(true);
+        m_specNglEdit->setText(
+            opt.value(QStringLiteral("spec-draft-ngl"), opt.value(QStringLiteral("ngld"))));
+    }
+    if (opt.contains(QStringLiteral("spec-draft-threads")) || opt.contains(QStringLiteral("td"))) {
+        m_specThreadsCheck->setChecked(true);
+        m_specThreadsSpin->setValue(
+            opt.value(QStringLiteral("spec-draft-threads"), opt.value(QStringLiteral("td"))).toInt());
+    }
+    if (flags.contains(QLatin1String("spec-draft-cpu-moe")) ||
+        flags.contains(QLatin1String("cmoed")))
+        m_specCpuMoeCheck->setChecked(true);
+    if (opt.contains(QStringLiteral("spec-draft-p-split"))) {
+        m_specPSplitCheck->setChecked(true);
+        m_specPSplitSpin->setValue(opt[QStringLiteral("spec-draft-p-split")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("spec-draft-p-min"))) {
+        m_specPMinCheck->setChecked(true);
+        m_specPMinSpin->setValue(opt[QStringLiteral("spec-draft-p-min")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-mod-n-min"))) {
+        m_ngModNMinCheck->setChecked(true);
+        m_ngModNMinSpin->setValue(opt[QStringLiteral("spec-ngram-mod-n-min")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-mod-n-max"))) {
+        m_ngModNMaxCheck->setChecked(true);
+        m_ngModNMaxSpin->setValue(opt[QStringLiteral("spec-ngram-mod-n-max")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-mod-n-match"))) {
+        m_ngModNMatchCheck->setChecked(true);
+        m_ngModNMatchSpin->setValue(opt[QStringLiteral("spec-ngram-mod-n-match")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-simple-size-n"))) {
+        m_ngSimpleNCheck->setChecked(true);
+        m_ngSimpleNSpin->setValue(opt[QStringLiteral("spec-ngram-simple-size-n")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-simple-size-m"))) {
+        m_ngSimpleMCheck->setChecked(true);
+        m_ngSimpleMSpin->setValue(opt[QStringLiteral("spec-ngram-simple-size-m")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-simple-min-hits"))) {
+        m_ngSimpleHitsCheck->setChecked(true);
+        m_ngSimpleHitsSpin->setValue(opt[QStringLiteral("spec-ngram-simple-min-hits")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-map-k-size-n"))) {
+        m_ngMapKNCheck->setChecked(true);
+        m_ngMapKNSpin->setValue(opt[QStringLiteral("spec-ngram-map-k-size-n")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-map-k-size-m"))) {
+        m_ngMapKMCheck->setChecked(true);
+        m_ngMapKMSpin->setValue(opt[QStringLiteral("spec-ngram-map-k-size-m")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-ngram-map-k-min-hits"))) {
+        m_ngMapKHitsCheck->setChecked(true);
+        m_ngMapKHitsSpin->setValue(opt[QStringLiteral("spec-ngram-map-k-min-hits")].toInt());
+    }
+    if (flags.contains(QLatin1String("spec-default")))
+        m_specDefaultCheck->setChecked(true);
     if (opt.contains(QStringLiteral("b"))) {
         m_batchCheck->setChecked(true);
         m_batchSpin->setValue(opt[QStringLiteral("b")].toInt());
