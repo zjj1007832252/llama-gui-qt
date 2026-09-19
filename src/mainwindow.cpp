@@ -434,6 +434,7 @@ QWidget *MainWindow::createParamPanel()
     addRow(grid, 12, m_parallelCheck, m_parallelSpin);
 
     grid->setColumnStretch(1, 1);
+    grid->setRowStretch(13, 1);
 
     addParamTab(body, QStringLiteral("1、核心基础"),
                 QStringLiteral("一、核心基础参数：上下文、线程、Flash Attn、卸载层数、"
@@ -464,6 +465,7 @@ QWidget *MainWindow::createParamPanel()
     addRow(grid2, 1, m_cacheVCheck, m_cacheVCombo);
 
     grid2->setColumnStretch(1, 1);
+    grid2->setRowStretch(2, 1);
 
     addParamTab(body2, QStringLiteral("2、KV缓存"), QStringLiteral("二、KV 缓存量化类型"));
 
@@ -536,6 +538,7 @@ QWidget *MainWindow::createParamPanel()
                   m_seedCheck, m_seedSpin);
 
     grid3->setColumnStretch(1, 1);
+    grid3->setRowStretch(6, 1);
 
     addParamTab(body3, QStringLiteral("3、采样参数"),
                 QStringLiteral("三、采样参数：请求未指定时采用的服务端默认采样值"));
@@ -593,6 +596,7 @@ QWidget *MainWindow::createParamPanel()
     addRow(grid4, 4, m_thinkBudgetCheck, m_thinkBudgetSpin);
 
     grid4->setColumnStretch(1, 1);
+    grid4->setRowStretch(5, 1);
 
     addParamTab(body4, QStringLiteral("4、服务日志"),
                 QStringLiteral("四、服务与日志：监控端点、超时、日志文件、对话模板、思考预算"));
