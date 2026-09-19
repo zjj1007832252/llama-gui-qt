@@ -7,6 +7,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QDoubleSpinBox;
 class QFrame;
 class QLabel;
 class QLineEdit;
@@ -83,6 +84,28 @@ private:
     QCheckBox *m_noMmapCheck = nullptr;
     QCheckBox *m_cpuMoeCheck = nullptr;
     QCheckBox *m_specCheck = nullptr;   QSpinBox *m_specSpin = nullptr;
+
+    // ---- left: batch / multi-gpu / parallel ----
+    QCheckBox *m_batchCheck = nullptr;    QSpinBox *m_batchSpin = nullptr;
+    QCheckBox *m_ubatchCheck = nullptr;   QSpinBox *m_ubatchSpin = nullptr;
+    QCheckBox *m_tsCheck = nullptr;       QLineEdit *m_tsEdit = nullptr;
+    QCheckBox *m_mainGpuCheck = nullptr;  QSpinBox *m_mainGpuSpin = nullptr;
+    QCheckBox *m_parallelCheck = nullptr; QSpinBox *m_parallelSpin = nullptr;
+
+    // ---- left: sampling params ----
+    QCheckBox *m_tempCheck = nullptr;     QDoubleSpinBox *m_tempSpin = nullptr;
+    QCheckBox *m_topKCheck = nullptr;     QSpinBox *m_topKSpin = nullptr;
+    QCheckBox *m_topPCheck = nullptr;     QDoubleSpinBox *m_topPSpin = nullptr;
+    QCheckBox *m_minPCheck = nullptr;     QDoubleSpinBox *m_minPSpin = nullptr;
+    QCheckBox *m_repPenCheck = nullptr;   QDoubleSpinBox *m_repPenSpin = nullptr;
+    QCheckBox *m_seedCheck = nullptr;     QSpinBox *m_seedSpin = nullptr;
+
+    // ---- left: service / logging ----
+    QCheckBox *m_metricsCheck = nullptr;
+    QCheckBox *m_timeoutCheck = nullptr;  QSpinBox *m_timeoutSpin = nullptr;
+    QCheckBox *m_logFileCheck = nullptr;  QLineEdit *m_logFileEdit = nullptr;
+    QCheckBox *m_chatTmplCheck = nullptr; QComboBox *m_chatTmplCombo = nullptr;
+    QCheckBox *m_thinkBudgetCheck = nullptr; QSpinBox *m_thinkBudgetSpin = nullptr;
     QCheckBox *m_reasoningCheck = nullptr;  QComboBox *m_reasoningCombo = nullptr;
     QCheckBox *m_splitCheck = nullptr;  QComboBox *m_splitCombo = nullptr;
     QCheckBox *m_mmapLoadCheck = nullptr;

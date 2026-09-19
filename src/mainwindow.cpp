@@ -9,6 +9,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -40,6 +41,32 @@
 
 namespace {
 const QString kTaskHint = QStringLiteral("暂无统计数据，启动服务并处理请求后此处显示各 slot 的实时速度");
+
+// 以下为 llama-server --help 中标注的默认值：参数不指定时 server 采用该值。
+// 界面控件初始化为这些值，且取值等于默认值时不写入 JSON 配置文件。
+constexpr int kBatchDefault = 2048;
+constexpr int kUbatchDefault = 512;
+constexpr int kMainGpuDefault = 0;
+constexpr int kParallelDefault = -1;      // -1 = auto
+constexpr double kTempDefault = 0.80;
+constexpr int kTopKDefault = 40;
+constexpr double kTopPDefault = 0.95;
+constexpr double kMinPDefault = 0.05;
+constexpr double kRepPenDefault = 1.00;
+constexpr int kSeedDefault = -1;          // -1 = 随机
+constexpr int kTimeoutDefault = 3600;
+constexpr int kThinkBudgetDefault = -1;   // -1 = 不限制
+
+// 浮点参数去掉多余的小数零，避免命令行出现 0.80 / 1.00 这类写法
+QString fmtNum(double v)
+{
+    QString s = QString::number(v, 'f', 2);
+    while (s.endsWith(QLatin1Char('0')))
+        s.chop(1);
+    if (s.endsWith(QLatin1Char('.')))
+        s.chop(1);
+    return s;
+}
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -368,6 +395,49 @@ QWidget *MainWindow::createParamPanel()
     m_splitCombo->setFixedWidth(200);
     addRow(grid, 7, m_splitCheck, m_splitCombo);
 
+    // 批大小 / 多卡分配 / 并发：默认值取自 server，勾选后才输出参数
+    m_batchCheck = new QCheckBox(QStringLiteral("批大小"));
+    m_batchCheck->setToolTip(QStringLiteral("--batch-size，逻辑最大批大小，默认 %1").arg(kBatchDefault));
+    m_batchSpin = new QSpinBox;
+    m_batchSpin->setRange(1, 1048576);
+    m_batchSpin->setValue(kBatchDefault);
+    m_batchSpin->setFixedWidth(110);
+    addRow(grid, 8, m_batchCheck, m_batchSpin);
+
+    m_ubatchCheck = new QCheckBox(QStringLiteral("物理批大小"));
+    m_ubatchCheck->setToolTip(QStringLiteral("--ubatch-size，物理最大批大小，默认 %1").arg(kUbatchDefault));
+    m_ubatchSpin = new QSpinBox;
+    m_ubatchSpin->setRange(1, 1048576);
+    m_ubatchSpin->setValue(kUbatchDefault);
+    m_ubatchSpin->setFixedWidth(110);
+    addRow(grid, 9, m_ubatchCheck, m_ubatchSpin);
+
+    m_tsCheck = new QCheckBox(QStringLiteral("多卡显存比例"));
+    m_tsCheck->setToolTip(QStringLiteral("--tensor-split，按 GPU 顺序给出分配比例，如 3,1"));
+    m_tsEdit = new QLineEdit;
+    m_tsEdit->setPlaceholderText(QStringLiteral("如 3,1（按 GPU 顺序）"));
+    m_tsEdit->setFixedWidth(200);
+    addRow(grid, 10, m_tsCheck, m_tsEdit);
+
+    m_mainGpuCheck = new QCheckBox(QStringLiteral("主GPU"));
+    m_mainGpuCheck->setToolTip(
+        QStringLiteral("--main-gpu，split-mode=none 时使用的 GPU、row 模式下存放 KV 的 GPU，默认 %1")
+            .arg(kMainGpuDefault));
+    m_mainGpuSpin = new QSpinBox;
+    m_mainGpuSpin->setRange(0, 64);
+    m_mainGpuSpin->setValue(kMainGpuDefault);
+    m_mainGpuSpin->setFixedWidth(110);
+    addRow(grid, 11, m_mainGpuCheck, m_mainGpuSpin);
+
+    m_parallelCheck = new QCheckBox(QStringLiteral("并发槽位数"));
+    m_parallelCheck->setToolTip(QStringLiteral("-np/--parallel，并发 slot 数，默认 %1（自动）")
+                                    .arg(kParallelDefault));
+    m_parallelSpin = new QSpinBox;
+    m_parallelSpin->setRange(-1, 1024);
+    m_parallelSpin->setValue(kParallelDefault);
+    m_parallelSpin->setFixedWidth(110);
+    addRow(grid, 12, m_parallelCheck, m_parallelSpin);
+
     grid->setColumnStretch(1, 1);
 
     outer->addWidget(makeHeader(QStringLiteral("一、核心基础参数")));
@@ -401,6 +471,136 @@ QWidget *MainWindow::createParamPanel()
 
     outer->addWidget(makeHeader(QStringLiteral("二、KV 缓存量化类型")));
     outer->addWidget(body2);
+
+    // 三、采样参数：默认值为 server 内置值，勾选后才输出参数
+    auto *body3 = new QWidget;
+    auto *grid3 = new QGridLayout(body3);
+    grid3->setContentsMargins(2, 4, 2, 0);
+    grid3->setHorizontalSpacing(8);
+    grid3->setVerticalSpacing(7);
+
+    auto addSamplerRow = [&](int row, const QString &label, const QString &tip,
+                             QCheckBox *&check, QWidget *editor) {
+        check = new QCheckBox(label);
+        check->setToolTip(tip);
+        addRow(grid3, row, check, editor);
+    };
+
+    m_tempSpin = new QDoubleSpinBox;
+    m_tempSpin->setRange(0.0, 5.0);
+    m_tempSpin->setSingleStep(0.05);
+    m_tempSpin->setDecimals(2);
+    m_tempSpin->setValue(kTempDefault);
+    m_tempSpin->setFixedWidth(110);
+    addSamplerRow(0, QStringLiteral("温度"), QStringLiteral("--temp，默认 %1").arg(fmtNum(kTempDefault)),
+                  m_tempCheck, m_tempSpin);
+
+    m_topKSpin = new QSpinBox;
+    m_topKSpin->setRange(0, 1000000);
+    m_topKSpin->setValue(kTopKDefault);
+    m_topKSpin->setFixedWidth(110);
+    addSamplerRow(1, QStringLiteral("top-k"), QStringLiteral("--top-k，0 = 禁用，默认 %1").arg(kTopKDefault),
+                  m_topKCheck, m_topKSpin);
+
+    m_topPSpin = new QDoubleSpinBox;
+    m_topPSpin->setRange(0.0, 1.0);
+    m_topPSpin->setSingleStep(0.05);
+    m_topPSpin->setDecimals(2);
+    m_topPSpin->setValue(kTopPDefault);
+    m_topPSpin->setFixedWidth(110);
+    addSamplerRow(2, QStringLiteral("top-p"), QStringLiteral("--top-p，1.0 = 禁用，默认 %1")
+                                                       .arg(fmtNum(kTopPDefault)),
+                  m_topPCheck, m_topPSpin);
+
+    m_minPSpin = new QDoubleSpinBox;
+    m_minPSpin->setRange(0.0, 1.0);
+    m_minPSpin->setSingleStep(0.01);
+    m_minPSpin->setDecimals(2);
+    m_minPSpin->setValue(kMinPDefault);
+    m_minPSpin->setFixedWidth(110);
+    addSamplerRow(3, QStringLiteral("min-p"), QStringLiteral("--min-p，0.0 = 禁用，默认 %1")
+                                                       .arg(fmtNum(kMinPDefault)),
+                  m_minPCheck, m_minPSpin);
+
+    m_repPenSpin = new QDoubleSpinBox;
+    m_repPenSpin->setRange(0.0, 5.0);
+    m_repPenSpin->setSingleStep(0.01);
+    m_repPenSpin->setDecimals(2);
+    m_repPenSpin->setValue(kRepPenDefault);
+    m_repPenSpin->setFixedWidth(110);
+    addSamplerRow(4, QStringLiteral("重复惩罚"), QStringLiteral("--repeat-penalty，1.0 = 禁用，默认 %1")
+                                                      .arg(fmtNum(kRepPenDefault)),
+                  m_repPenCheck, m_repPenSpin);
+
+    m_seedSpin = new QSpinBox;
+    m_seedSpin->setRange(-1, 2147483647);
+    m_seedSpin->setValue(kSeedDefault);
+    m_seedSpin->setFixedWidth(110);
+    addSamplerRow(5, QStringLiteral("随机种子"),
+                  QStringLiteral("--seed，-1 = 每次随机，默认 %1").arg(kSeedDefault),
+                  m_seedCheck, m_seedSpin);
+
+    grid3->setColumnStretch(1, 1);
+
+    outer->addWidget(makeHeader(QStringLiteral("三、采样参数")));
+    outer->addWidget(body3);
+
+    // 四、服务与日志（默认值 = server 内置值）
+    auto *body4 = new QWidget;
+    auto *grid4 = new QGridLayout(body4);
+    grid4->setContentsMargins(2, 4, 2, 0);
+    grid4->setHorizontalSpacing(8);
+    grid4->setVerticalSpacing(7);
+
+    m_metricsCheck = new QCheckBox(QStringLiteral("Metrics监控"));
+    m_metricsCheck->setToolTip(QStringLiteral("--metrics，开启 Prometheus 兼容监控端点（默认关闭）"));
+    addRow(grid4, 0, m_metricsCheck, nullptr);
+
+    m_timeoutSpin = new QSpinBox;
+    m_timeoutSpin->setRange(1, 86400);
+    m_timeoutSpin->setValue(kTimeoutDefault);
+    m_timeoutSpin->setFixedWidth(110);
+    m_timeoutCheck = new QCheckBox(QStringLiteral("服务超时(秒)"));
+    m_timeoutCheck->setToolTip(QStringLiteral("-to/--timeout，默认 %1").arg(kTimeoutDefault));
+    addRow(grid4, 1, m_timeoutCheck, m_timeoutSpin);
+
+    m_logFileEdit = new QLineEdit;
+    m_logFileEdit->setPlaceholderText(QStringLiteral("日志文件路径"));
+    m_logFileEdit->setFixedWidth(200);
+    m_logFileCheck = new QCheckBox(QStringLiteral("日志写入文件"));
+    m_logFileCheck->setToolTip(QStringLiteral("--log-file，将服务器日志写入指定文件（默认关闭）"));
+    addRow(grid4, 2, m_logFileCheck, m_logFileEdit);
+
+    m_chatTmplCombo = new QComboBox;
+    m_chatTmplCombo->setEditable(true);
+    m_chatTmplCombo->addItems({QStringLiteral("bailing"), QStringLiteral("chatglm4"),
+                               QStringLiteral("chatml"), QStringLiteral("deepseek"),
+                               QStringLiteral("deepseek2"), QStringLiteral("deepseek3"),
+                               QStringLiteral("gemma"), QStringLiteral("gpt-oss"),
+                               QStringLiteral("granite"), QStringLiteral("hunyuan-moe"),
+                               QStringLiteral("kimi-k2"), QStringLiteral("llama2"),
+                               QStringLiteral("llama3"), QStringLiteral("mistral-v3"),
+                               QStringLiteral("mistral-v7"), QStringLiteral("phi3"),
+                               QStringLiteral("phi4"), QStringLiteral("qwen2"),
+                               QStringLiteral("vicuna"), QStringLiteral("zephyr")});
+    m_chatTmplCombo->setFixedWidth(200);
+    m_chatTmplCheck = new QCheckBox(QStringLiteral("对话模板"));
+    m_chatTmplCheck->setToolTip(QStringLiteral("--chat-template，覆盖模型自带模板（默认使用模型元数据）"));
+    addRow(grid4, 3, m_chatTmplCheck, m_chatTmplCombo);
+
+    m_thinkBudgetSpin = new QSpinBox;
+    m_thinkBudgetSpin->setRange(-1, 1048576);
+    m_thinkBudgetSpin->setValue(kThinkBudgetDefault);
+    m_thinkBudgetSpin->setFixedWidth(110);
+    m_thinkBudgetCheck = new QCheckBox(QStringLiteral("思考token预算"));
+    m_thinkBudgetCheck->setToolTip(QStringLiteral("--reasoning-budget，-1 = 不限制，0 = 立即结束，默认 %1")
+                                       .arg(kThinkBudgetDefault));
+    addRow(grid4, 4, m_thinkBudgetCheck, m_thinkBudgetSpin);
+
+    grid4->setColumnStretch(1, 1);
+
+    outer->addWidget(makeHeader(QStringLiteral("四、服务与日志")));
+    outer->addWidget(body4);
 
     auto *wrap = new QWidget;
     wrap->setLayout(outer);
@@ -600,18 +800,27 @@ void MainWindow::wireLogic()
     auto regen = [this] { refreshAll(); };
     for (QCheckBox *cb : {m_ctxCheck, m_threadsCheck, m_flashCheck, m_nglCheck,
                           m_noMmapCheck, m_cpuMoeCheck, m_specCheck, m_reasoningCheck,
-                          m_splitCheck, m_mmapLoadCheck, m_cacheKCheck, m_cacheVCheck})
+                          m_splitCheck, m_mmapLoadCheck, m_cacheKCheck, m_cacheVCheck,
+                          m_batchCheck, m_ubatchCheck, m_tsCheck, m_mainGpuCheck,
+                          m_parallelCheck, m_tempCheck, m_topKCheck, m_topPCheck,
+                          m_minPCheck, m_repPenCheck, m_seedCheck, m_metricsCheck,
+                          m_timeoutCheck, m_logFileCheck, m_chatTmplCheck, m_thinkBudgetCheck})
         connect(cb, &QCheckBox::toggled, this, regen);
     connect(m_ctxSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
         refreshCtxInfo();
         refreshCmdInfo();
     });
-    connect(m_threadsSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
-    connect(m_specSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
-    connect(m_nglSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
+    for (QSpinBox *sb : {m_threadsSpin, m_specSpin, m_nglSpin, m_batchSpin, m_ubatchSpin,
+                         m_mainGpuSpin, m_parallelSpin, m_topKSpin, m_seedSpin,
+                         m_timeoutSpin, m_thinkBudgetSpin})
+        connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
+    for (QDoubleSpinBox *sb : {m_tempSpin, m_topPSpin, m_minPSpin, m_repPenSpin})
+        connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, regen);
     for (QComboBox *cb : {m_flashCombo, m_reasoningCombo, m_splitCombo,
-                          m_cacheKCombo, m_cacheVCombo})
+                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo})
         connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, regen);
+    connect(m_tsEdit, &QLineEdit::textChanged, this, regen);
+    connect(m_logFileEdit, &QLineEdit::textChanged, this, regen);
 
     connect(m_toolPath, &QLineEdit::editingFinished, this, [this] { refreshCmdInfo(); });
     connect(m_modelDir, &QLineEdit::editingFinished, this, [this] { scanModels(); });
@@ -746,6 +955,45 @@ QStringList MainWindow::buildServerArgs() const
     if (m_reasoningCheck->isChecked())
         args << QStringLiteral("--reasoning") << m_reasoningCombo->currentText();
 
+    // 一(续)、批大小 / 多卡分配 / 并发
+    if (m_batchCheck->isChecked())
+        args << QStringLiteral("-b") << QString::number(m_batchSpin->value());
+    if (m_ubatchCheck->isChecked())
+        args << QStringLiteral("-ub") << QString::number(m_ubatchSpin->value());
+    if (m_tsCheck->isChecked() && !m_tsEdit->text().trimmed().isEmpty())
+        args << QStringLiteral("-ts") << m_tsEdit->text().trimmed();
+    if (m_mainGpuCheck->isChecked())
+        args << QStringLiteral("-mg") << QString::number(m_mainGpuSpin->value());
+    if (m_parallelCheck->isChecked())
+        args << QStringLiteral("-np") << QString::number(m_parallelSpin->value());
+
+    // 三、采样参数（server 会把这些作为请求未指定时的默认采样值）
+    if (m_tempCheck->isChecked())
+        args << QStringLiteral("--temp") << fmtNum(m_tempSpin->value());
+    if (m_topKCheck->isChecked())
+        args << QStringLiteral("--top-k") << QString::number(m_topKSpin->value());
+    if (m_topPCheck->isChecked())
+        args << QStringLiteral("--top-p") << fmtNum(m_topPSpin->value());
+    if (m_minPCheck->isChecked())
+        args << QStringLiteral("--min-p") << fmtNum(m_minPSpin->value());
+    if (m_repPenCheck->isChecked())
+        args << QStringLiteral("--repeat-penalty") << fmtNum(m_repPenSpin->value());
+    if (m_seedCheck->isChecked())
+        args << QStringLiteral("--seed") << QString::number(m_seedSpin->value());
+
+    // 四、服务与日志
+    if (m_metricsCheck->isChecked())
+        args << QStringLiteral("--metrics");
+    if (m_timeoutCheck->isChecked())
+        args << QStringLiteral("--timeout") << QString::number(m_timeoutSpin->value());
+    if (m_logFileCheck->isChecked() && !m_logFileEdit->text().trimmed().isEmpty())
+        args << QStringLiteral("--log-file")
+             << QDir::toNativeSeparators(m_logFileEdit->text().trimmed());
+    if (m_chatTmplCheck->isChecked() && !m_chatTmplCombo->currentText().trimmed().isEmpty())
+        args << QStringLiteral("--chat-template") << m_chatTmplCombo->currentText().trimmed();
+    if (m_thinkBudgetCheck->isChecked())
+        args << QStringLiteral("--reasoning-budget") << QString::number(m_thinkBudgetSpin->value());
+
     args << QStringLiteral("--host") << (m_localOnlyCheck->isChecked()
                                              ? QStringLiteral("127.0.0.1")
                                              : m_listenEdit->text().trimmed().isEmpty()
@@ -810,10 +1058,51 @@ void MainWindow::refreshCmdInfo()
     }
     if (m_reasoningCheck->isChecked())
         text += QStringLiteral("--reasoning %1\n").arg(m_reasoningCombo->currentText());
+    if (m_batchCheck->isChecked())
+        text += QStringLiteral("--batch-size %1\n").arg(m_batchSpin->value());
+    if (m_ubatchCheck->isChecked())
+        text += QStringLiteral("--ubatch-size %1\n").arg(m_ubatchSpin->value());
+    if (m_tsCheck->isChecked() && !m_tsEdit->text().trimmed().isEmpty())
+        text += QStringLiteral("--tensor-split %1\n").arg(m_tsEdit->text().trimmed());
+    if (m_mainGpuCheck->isChecked())
+        text += QStringLiteral("--main-gpu %1\n").arg(m_mainGpuSpin->value());
+    if (m_parallelCheck->isChecked())
+        text += QStringLiteral("--parallel %1\n").arg(m_parallelSpin->value());
     if (!m_mmprojPath->text().trimmed().isEmpty())
         text += QStringLiteral("--mmproj %1\n").arg(QDir::toNativeSeparators(m_mmprojPath->text().trimmed()));
     text += QLatin1Char('\n');
-    text += QStringLiteral("# 三、网络与 API 参数\n");
+
+    text += QStringLiteral("# 三、采样参数\n");
+    bool anySampler = false;
+    if (m_tempCheck->isChecked()) {
+        text += QStringLiteral("--temp %1\n").arg(fmtNum(m_tempSpin->value()));
+        anySampler = true;
+    }
+    if (m_topKCheck->isChecked()) {
+        text += QStringLiteral("--top-k %1\n").arg(m_topKSpin->value());
+        anySampler = true;
+    }
+    if (m_topPCheck->isChecked()) {
+        text += QStringLiteral("--top-p %1\n").arg(fmtNum(m_topPSpin->value()));
+        anySampler = true;
+    }
+    if (m_minPCheck->isChecked()) {
+        text += QStringLiteral("--min-p %1\n").arg(fmtNum(m_minPSpin->value()));
+        anySampler = true;
+    }
+    if (m_repPenCheck->isChecked()) {
+        text += QStringLiteral("--repeat-penalty %1\n").arg(fmtNum(m_repPenSpin->value()));
+        anySampler = true;
+    }
+    if (m_seedCheck->isChecked()) {
+        text += QStringLiteral("--seed %1\n").arg(m_seedSpin->value());
+        anySampler = true;
+    }
+    if (!anySampler)
+        text += QStringLiteral("(未启用，使用 server 默认采样参数)\n");
+    text += QLatin1Char('\n');
+
+    text += QStringLiteral("# 四、网络与服务参数\n");
     text += QStringLiteral("--host %1\n").arg(m_localOnlyCheck->isChecked()
                                                   ? QStringLiteral("127.0.0.1")
                                                   : m_listenEdit->text());
@@ -826,6 +1115,17 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--no-webui\n");
     text += QStringLiteral("--cors-origins %1\n")
                 .arg(m_corsCheck->isChecked() ? QStringLiteral("*") : QStringLiteral("localhost"));
+    if (m_metricsCheck->isChecked())
+        text += QStringLiteral("--metrics\n");
+    if (m_timeoutCheck->isChecked())
+        text += QStringLiteral("--timeout %1\n").arg(m_timeoutSpin->value());
+    if (m_logFileCheck->isChecked() && !m_logFileEdit->text().trimmed().isEmpty())
+        text += QStringLiteral("--log-file %1\n")
+                    .arg(QDir::toNativeSeparators(m_logFileEdit->text().trimmed()));
+    if (m_chatTmplCheck->isChecked() && !m_chatTmplCombo->currentText().trimmed().isEmpty())
+        text += QStringLiteral("--chat-template %1\n").arg(m_chatTmplCombo->currentText().trimmed());
+    if (m_thinkBudgetCheck->isChecked())
+        text += QStringLiteral("--reasoning-budget %1\n").arg(m_thinkBudgetSpin->value());
 
     const int pos = m_cmdInfo->verticalScrollBar()->value();
     m_cmdInfo->setPlainText(text);
@@ -1088,6 +1388,41 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("webuiDisabled"), m_webuiDisabled);
     o.insert(QStringLiteral("cors"), m_corsCheck->isChecked());
 
+    // 批大小 / 多卡 / 并发 / 采样 / 服务参数：未勾选、或取值等于 server 默认值时，
+    // 均视为「采用默认值」，不写入配置（下次加载保持不勾选 + 默认值）。
+    if (m_batchCheck->isChecked() && m_batchSpin->value() != kBatchDefault)
+        o.insert(QStringLiteral("batchSize"), m_batchSpin->value());
+    if (m_ubatchCheck->isChecked() && m_ubatchSpin->value() != kUbatchDefault)
+        o.insert(QStringLiteral("ubatchSize"), m_ubatchSpin->value());
+    if (m_tsCheck->isChecked() && !m_tsEdit->text().trimmed().isEmpty())
+        o.insert(QStringLiteral("tensorSplit"), m_tsEdit->text().trimmed());
+    if (m_mainGpuCheck->isChecked() && m_mainGpuSpin->value() != kMainGpuDefault)
+        o.insert(QStringLiteral("mainGpu"), m_mainGpuSpin->value());
+    if (m_parallelCheck->isChecked() && m_parallelSpin->value() != kParallelDefault)
+        o.insert(QStringLiteral("parallel"), m_parallelSpin->value());
+    if (m_tempCheck->isChecked() && !qFuzzyCompare(m_tempSpin->value(), kTempDefault))
+        o.insert(QStringLiteral("temp"), m_tempSpin->value());
+    if (m_topKCheck->isChecked() && m_topKSpin->value() != kTopKDefault)
+        o.insert(QStringLiteral("topK"), m_topKSpin->value());
+    if (m_topPCheck->isChecked() && !qFuzzyCompare(m_topPSpin->value(), kTopPDefault))
+        o.insert(QStringLiteral("topP"), m_topPSpin->value());
+    if (m_minPCheck->isChecked() && !qFuzzyCompare(m_minPSpin->value(), kMinPDefault))
+        o.insert(QStringLiteral("minP"), m_minPSpin->value());
+    if (m_repPenCheck->isChecked() && !qFuzzyCompare(m_repPenSpin->value(), kRepPenDefault))
+        o.insert(QStringLiteral("repeatPenalty"), m_repPenSpin->value());
+    if (m_seedCheck->isChecked() && m_seedSpin->value() != kSeedDefault)
+        o.insert(QStringLiteral("seed"), m_seedSpin->value());
+    if (m_metricsCheck->isChecked())
+        o.insert(QStringLiteral("metrics"), true);
+    if (m_timeoutCheck->isChecked() && m_timeoutSpin->value() != kTimeoutDefault)
+        o.insert(QStringLiteral("timeout"), m_timeoutSpin->value());
+    if (m_logFileCheck->isChecked() && !m_logFileEdit->text().trimmed().isEmpty())
+        o.insert(QStringLiteral("logFile"), m_logFileEdit->text().trimmed());
+    if (m_chatTmplCheck->isChecked() && !m_chatTmplCombo->currentText().trimmed().isEmpty())
+        o.insert(QStringLiteral("chatTemplate"), m_chatTmplCombo->currentText().trimmed());
+    if (m_thinkBudgetCheck->isChecked() && m_thinkBudgetSpin->value() != kThinkBudgetDefault)
+        o.insert(QStringLiteral("reasoningBudget"), m_thinkBudgetSpin->value());
+
     QFile f(path);
     if (f.open(QIODevice::WriteOnly)) {
         f.write(QJsonDocument(o).toJson());
@@ -1150,6 +1485,40 @@ void MainWindow::loadParams()
     m_modelIdEdit->setText(o.value(QStringLiteral("modelId")).toString());
     m_webuiDisabled = o.value(QStringLiteral("webuiDisabled")).toBool();
     m_corsCheck->setChecked(o.value(QStringLiteral("cors")).toBool(false));
+    // 批大小 / 多卡 / 并发 / 采样 / 服务参数：配置里没有对应键 = 采用 server 默认值，
+    // 此时不勾选并复位为默认值
+    m_batchCheck->setChecked(o.contains(QStringLiteral("batchSize")));
+    m_batchSpin->setValue(o.value(QStringLiteral("batchSize")).toInt(kBatchDefault));
+    m_ubatchCheck->setChecked(o.contains(QStringLiteral("ubatchSize")));
+    m_ubatchSpin->setValue(o.value(QStringLiteral("ubatchSize")).toInt(kUbatchDefault));
+    m_tsCheck->setChecked(o.contains(QStringLiteral("tensorSplit")));
+    m_tsEdit->setText(o.value(QStringLiteral("tensorSplit")).toString());
+    m_mainGpuCheck->setChecked(o.contains(QStringLiteral("mainGpu")));
+    m_mainGpuSpin->setValue(o.value(QStringLiteral("mainGpu")).toInt(kMainGpuDefault));
+    m_parallelCheck->setChecked(o.contains(QStringLiteral("parallel")));
+    m_parallelSpin->setValue(o.value(QStringLiteral("parallel")).toInt(kParallelDefault));
+    m_tempCheck->setChecked(o.contains(QStringLiteral("temp")));
+    m_tempSpin->setValue(o.value(QStringLiteral("temp")).toDouble(kTempDefault));
+    m_topKCheck->setChecked(o.contains(QStringLiteral("topK")));
+    m_topKSpin->setValue(o.value(QStringLiteral("topK")).toInt(kTopKDefault));
+    m_topPCheck->setChecked(o.contains(QStringLiteral("topP")));
+    m_topPSpin->setValue(o.value(QStringLiteral("topP")).toDouble(kTopPDefault));
+    m_minPCheck->setChecked(o.contains(QStringLiteral("minP")));
+    m_minPSpin->setValue(o.value(QStringLiteral("minP")).toDouble(kMinPDefault));
+    m_repPenCheck->setChecked(o.contains(QStringLiteral("repeatPenalty")));
+    m_repPenSpin->setValue(o.value(QStringLiteral("repeatPenalty")).toDouble(kRepPenDefault));
+    m_seedCheck->setChecked(o.contains(QStringLiteral("seed")));
+    m_seedSpin->setValue(o.value(QStringLiteral("seed")).toInt(kSeedDefault));
+    m_metricsCheck->setChecked(o.value(QStringLiteral("metrics")).toBool(false));
+    m_timeoutCheck->setChecked(o.contains(QStringLiteral("timeout")));
+    m_timeoutSpin->setValue(o.value(QStringLiteral("timeout")).toInt(kTimeoutDefault));
+    m_logFileCheck->setChecked(o.contains(QStringLiteral("logFile")));
+    m_logFileEdit->setText(o.value(QStringLiteral("logFile")).toString());
+    m_chatTmplCheck->setChecked(o.contains(QStringLiteral("chatTemplate")));
+    m_chatTmplCombo->setCurrentText(o.value(QStringLiteral("chatTemplate")).toString());
+    m_thinkBudgetCheck->setChecked(o.contains(QStringLiteral("reasoningBudget")));
+    m_thinkBudgetSpin->setValue(
+        o.value(QStringLiteral("reasoningBudget")).toInt(kThinkBudgetDefault));
     m_closeWebBtn->setText(m_webuiDisabled ? QStringLiteral("开启 llama.cpp 的web访问")
                                            : QStringLiteral("关闭 llama.cpp 的web访问"));
 
@@ -1191,11 +1560,20 @@ void MainWindow::parseArgsText()
             {QStringLiteral("cache-type-v"), QStringLiteral("ctv")},
             {QStringLiteral("alias"), QStringLiteral("a")},
             {QStringLiteral("rea"), QStringLiteral("reasoning")},
+            {QStringLiteral("batch-size"), QStringLiteral("b")},
+            {QStringLiteral("ubatch-size"), QStringLiteral("ub")},
+            {QStringLiteral("tensor-split"), QStringLiteral("ts")},
+            {QStringLiteral("main-gpu"), QStringLiteral("mg")},
+            {QStringLiteral("parallel"), QStringLiteral("np")},
+            {QStringLiteral("n-parallel"), QStringLiteral("np")},
+            {QStringLiteral("temperature"), QStringLiteral("temp")},
+            {QStringLiteral("timeout"), QStringLiteral("to")},
         };
         if (alias.contains(key))
             key = alias[key];
         if (key == QLatin1String("no-webui") || key == QLatin1String("no-mmap") ||
-            key == QLatin1String("mmap") || key == QLatin1String("cpu-moe")) {
+            key == QLatin1String("mmap") || key == QLatin1String("cpu-moe") ||
+            key == QLatin1String("metrics")) {
             flags << key;
         } else if (i + 1 < tokens.size() && !tokens[i + 1].startsWith(QLatin1Char('-'))) {
             opt.insert(key, tokens[++i]);
@@ -1267,6 +1645,73 @@ void MainWindow::parseArgsText()
     }
     if (flags.contains(QLatin1String("mmap")))
         m_mmapLoadCheck->setChecked(true);
+    if (opt.contains(QStringLiteral("spec-type"))) {
+        m_specCheck->setChecked(true);
+        if (opt.contains(QStringLiteral("spec-draft-n-max")))
+            m_specSpin->setValue(opt[QStringLiteral("spec-draft-n-max")].toInt());
+    }
+    if (opt.contains(QStringLiteral("b"))) {
+        m_batchCheck->setChecked(true);
+        m_batchSpin->setValue(opt[QStringLiteral("b")].toInt());
+    }
+    if (opt.contains(QStringLiteral("ub"))) {
+        m_ubatchCheck->setChecked(true);
+        m_ubatchSpin->setValue(opt[QStringLiteral("ub")].toInt());
+    }
+    if (opt.contains(QStringLiteral("ts"))) {
+        m_tsCheck->setChecked(true);
+        m_tsEdit->setText(opt[QStringLiteral("ts")]);
+    }
+    if (opt.contains(QStringLiteral("mg"))) {
+        m_mainGpuCheck->setChecked(true);
+        m_mainGpuSpin->setValue(opt[QStringLiteral("mg")].toInt());
+    }
+    if (opt.contains(QStringLiteral("np"))) {
+        m_parallelCheck->setChecked(true);
+        m_parallelSpin->setValue(opt[QStringLiteral("np")].toInt());
+    }
+    if (opt.contains(QStringLiteral("temp"))) {
+        m_tempCheck->setChecked(true);
+        m_tempSpin->setValue(opt[QStringLiteral("temp")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("top-k"))) {
+        m_topKCheck->setChecked(true);
+        m_topKSpin->setValue(opt[QStringLiteral("top-k")].toInt());
+    }
+    if (opt.contains(QStringLiteral("top-p"))) {
+        m_topPCheck->setChecked(true);
+        m_topPSpin->setValue(opt[QStringLiteral("top-p")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("min-p"))) {
+        m_minPCheck->setChecked(true);
+        m_minPSpin->setValue(opt[QStringLiteral("min-p")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("repeat-penalty"))) {
+        m_repPenCheck->setChecked(true);
+        m_repPenSpin->setValue(opt[QStringLiteral("repeat-penalty")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("seed"))) {
+        m_seedCheck->setChecked(true);
+        m_seedSpin->setValue(opt[QStringLiteral("seed")].toInt());
+    }
+    if (flags.contains(QLatin1String("metrics")))
+        m_metricsCheck->setChecked(true);
+    if (opt.contains(QStringLiteral("to"))) {
+        m_timeoutCheck->setChecked(true);
+        m_timeoutSpin->setValue(opt[QStringLiteral("to")].toInt());
+    }
+    if (opt.contains(QStringLiteral("log-file"))) {
+        m_logFileCheck->setChecked(true);
+        m_logFileEdit->setText(QDir::toNativeSeparators(opt[QStringLiteral("log-file")]));
+    }
+    if (opt.contains(QStringLiteral("chat-template"))) {
+        m_chatTmplCheck->setChecked(true);
+        m_chatTmplCombo->setCurrentText(opt[QStringLiteral("chat-template")]);
+    }
+    if (opt.contains(QStringLiteral("reasoning-budget"))) {
+        m_thinkBudgetCheck->setChecked(true);
+        m_thinkBudgetSpin->setValue(opt[QStringLiteral("reasoning-budget")].toInt());
+    }
 
     refreshAll();
     QString msg = QStringLiteral("已解析并应用 %1 个参数选项").arg(opt.size() + flags.size());

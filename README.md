@@ -5,10 +5,15 @@ llama.cpp `llama-server` 的 Qt 图形化启动器。在界面上选择模型、
 ## 主要功能
 
 - **模型管理**：选择 llama.cpp 工具目录（启动时自动在 PATH 中搜索 `llama-server`）、扫描模型目录下的所有 `.gguf` 文件、支持多模态 `mmproj` 文件
-- **核心参数**：上下文窗口、CPU 线程数、Flash Attention、GPU 卸载层数（`-ngl`）、CPU MoE、内存映射、多卡拆分模式、KV 缓存量化（`-ctk/-ctv`）、MTP 投机解码（`--spec-type draft-mtp`）等
+- **核心参数**：上下文窗口、CPU 线程数、Flash Attention、GPU 卸载层数（`-ngl`）、CPU MoE、内存映射、多卡拆分模式、KV 缓存量化（`-ctk/-ctv`）、MTP 投机解码（`--spec-type draft-mtp`）
+- **显存与并发调优**：批大小 / 物理批大小（`-b`/`-ub`）、多卡显存比例（`-ts`）、主 GPU（`-mg`）、并发槽位数（`-np`）
+- **采样参数**：温度、top-k、top-p、min-p、重复惩罚、随机种子，作为请求未指定时的服务端默认采样值
+- **服务与日志**：Metrics 监控端点（`--metrics`）、服务超时（`--timeout`）、日志写入文件（`--log-file`）、对话模板（`--chat-template`）、思考 token 预算（`--reasoning-budget`）
 - **服务器控制**：监听地址 / 端口、API Key、model alias、CORS、WebUI 开关；一键启动 / 停止 / 重启
 - **运行监控**：实时解析 server 输出，显示每个 slot 的 prompt 处理 / 生成速度与 token 统计，独立的运行日志、测试日志、服务器日志页
 - **辅助工具**：命令行预览、生成 `.bat` 启动脚本、聊天测试、最优启动参数推荐（按显存自动估算）、参数配置的保存 / 加载
+
+> 各参数的界面默认值取自 `llama-server --help` 标注的默认值；保持默认值（未勾选）时不会向启动命令输出该参数，保存配置文件时也不会写入对应的键。
 
 ## 环境依赖
 
