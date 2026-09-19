@@ -125,6 +125,7 @@ private:
     QCheckBox *m_timeoutCheck = nullptr;  QSpinBox *m_timeoutSpin = nullptr;
     QCheckBox *m_logFileCheck = nullptr;  QLineEdit *m_logFileEdit = nullptr;
     QCheckBox *m_chatTmplCheck = nullptr; QComboBox *m_chatTmplCombo = nullptr;
+    QCheckBox *m_noJinjaCheck = nullptr;
     QCheckBox *m_thinkBudgetCheck = nullptr; QSpinBox *m_thinkBudgetSpin = nullptr;
     QCheckBox *m_reasoningCheck = nullptr;  QComboBox *m_reasoningCombo = nullptr;
     QCheckBox *m_splitCheck = nullptr;  QComboBox *m_splitCombo = nullptr;

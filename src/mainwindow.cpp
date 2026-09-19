@@ -864,8 +864,14 @@ QWidget *MainWindow::createParamPanel()
                                        .arg(kThinkBudgetDefault));
     addRow(grid4, 4, m_thinkBudgetCheck, m_thinkBudgetSpin);
 
+    // jinja 模板引擎默认开启；勾选后输出 --no-jinja，退回只识别内置模板
+    m_noJinjaCheck = new QCheckBox(QStringLiteral("禁用Jinja模板引擎"));
+    m_noJinjaCheck->setToolTip(QStringLiteral("--no-jinja，默认开启 jinja 模板引擎，"
+                                              "勾选后仅支持内置常用模板"));
+    addRow(grid4, 5, m_noJinjaCheck, nullptr);
+
     grid4->setColumnStretch(1, 1);
-    grid4->setRowStretch(5, 1);
+    grid4->setRowStretch(6, 1);
 
     addParamTab(body4, QStringLiteral("5、服务日志"),
                 QStringLiteral("五、服务与日志：监控端点、超时、日志文件、对话模板、思考预算"));
@@ -1083,7 +1089,8 @@ void MainWindow::wireLogic()
                           m_batchCheck, m_ubatchCheck, m_tsCheck, m_mainGpuCheck,
                           m_parallelCheck, m_tempCheck, m_topKCheck, m_topPCheck,
                           m_minPCheck, m_repPenCheck, m_seedCheck, m_metricsCheck,
-                          m_timeoutCheck, m_logFileCheck, m_chatTmplCheck, m_thinkBudgetCheck})
+                          m_timeoutCheck, m_logFileCheck, m_chatTmplCheck, m_thinkBudgetCheck,
+                          m_noJinjaCheck})
         connect(cb, &QCheckBox::toggled, this, regen);
     connect(m_ctxSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
         refreshCtxInfo();
@@ -1328,6 +1335,8 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("--chat-template") << m_chatTmplCombo->currentText().trimmed();
     if (m_thinkBudgetCheck->isChecked())
         args << QStringLiteral("--reasoning-budget") << QString::number(m_thinkBudgetSpin->value());
+    if (m_noJinjaCheck->isChecked())
+        args << QStringLiteral("--no-jinja");
 
     args << QStringLiteral("--host") << (m_localOnlyCheck->isChecked()
                                              ? QStringLiteral("127.0.0.1")
@@ -1552,6 +1561,8 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--chat-template %1\n").arg(m_chatTmplCombo->currentText().trimmed());
     if (m_thinkBudgetCheck->isChecked())
         text += QStringLiteral("--reasoning-budget %1\n").arg(m_thinkBudgetSpin->value());
+    if (m_noJinjaCheck->isChecked())
+        text += QStringLiteral("--no-jinja\n");
 
     const int pos = m_cmdInfo->verticalScrollBar()->value();
     m_cmdInfo->setPlainText(text);
@@ -1897,6 +1908,8 @@ void MainWindow::saveParams()
         o.insert(QStringLiteral("chatTemplate"), m_chatTmplCombo->currentText().trimmed());
     if (m_thinkBudgetCheck->isChecked() && m_thinkBudgetSpin->value() != kThinkBudgetDefault)
         o.insert(QStringLiteral("reasoningBudget"), m_thinkBudgetSpin->value());
+    if (m_noJinjaCheck->isChecked())
+        o.insert(QStringLiteral("noJinja"), true);
 
     QFile f(path);
     if (f.open(QIODevice::WriteOnly)) {
@@ -2042,6 +2055,7 @@ void MainWindow::loadParams()
     m_thinkBudgetCheck->setChecked(o.contains(QStringLiteral("reasoningBudget")));
     m_thinkBudgetSpin->setValue(
         o.value(QStringLiteral("reasoningBudget")).toInt(kThinkBudgetDefault));
+    m_noJinjaCheck->setChecked(o.value(QStringLiteral("noJinja")).toBool(false));
     m_closeWebBtn->setText(m_webuiDisabled ? QStringLiteral("开启 llama.cpp 的web访问")
                                            : QStringLiteral("关闭 llama.cpp 的web访问"));
 
@@ -2108,7 +2122,7 @@ void MainWindow::parseArgsText()
             key == QLatin1String("metrics") || key == QLatin1String("context-shift") ||
             key == QLatin1String("kv-unified") || key == QLatin1String("kvu") ||
             key == QLatin1String("spec-default") || key == QLatin1String("spec-draft-cpu-moe") ||
-            key == QLatin1String("cmoed")) {
+            key == QLatin1String("cmoed") || key == QLatin1String("no-jinja")) {
             flags << key;
         } else if (i + 1 < tokens.size() && !tokens[i + 1].startsWith(QLatin1Char('-'))) {
             opt.insert(key, tokens[++i]);
@@ -2318,6 +2332,8 @@ void MainWindow::parseArgsText()
         m_thinkBudgetCheck->setChecked(true);
         m_thinkBudgetSpin->setValue(opt[QStringLiteral("reasoning-budget")].toInt());
     }
+    if (flags.contains(QLatin1String("no-jinja")))
+        m_noJinjaCheck->setChecked(true);
     if (opt.contains(QStringLiteral("keep"))) {
         m_keepCheck->setChecked(true);
         m_keepSpin->setValue(opt[QStringLiteral("keep")].toInt());
