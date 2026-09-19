@@ -53,6 +53,9 @@ constexpr int kTopKDefault = 40;
 constexpr double kTopPDefault = 0.95;
 constexpr double kMinPDefault = 0.05;
 constexpr double kRepPenDefault = 1.00;
+constexpr double kPresPenDefault = 0.00;  // 0.0 = 禁用
+constexpr double kFreqPenDefault = 0.00;  // 0.0 = 禁用
+constexpr int kRepLastNDefault = 64;      // 0 = 禁用
 constexpr int kSeedDefault = -1;          // -1 = 随机
 constexpr int kTimeoutDefault = 3600;
 constexpr int kThinkBudgetDefault = -1;   // -1 = 不限制
@@ -794,16 +797,47 @@ QWidget *MainWindow::createParamPanel()
                                                       .arg(fmtNum(kRepPenDefault)),
                   m_repPenCheck, m_repPenSpin);
 
+    m_repLastNSpin = new QSpinBox;
+    m_repLastNSpin->setRange(0, 1048576);
+    m_repLastNSpin->setValue(kRepLastNDefault);
+    m_repLastNSpin->setFixedWidth(110);
+    addSamplerRow(5, QStringLiteral("重复统计窗口"),
+                  QStringLiteral("--repeat-last-n，参与重复惩罚统计的最近 token 数，"
+                                 "0 = 禁用，默认 %1").arg(kRepLastNDefault),
+                  m_repLastNCheck, m_repLastNSpin);
+
+    m_presPenSpin = new QDoubleSpinBox;
+    m_presPenSpin->setRange(-2.0, 2.0);
+    m_presPenSpin->setSingleStep(0.01);
+    m_presPenSpin->setDecimals(2);
+    m_presPenSpin->setValue(kPresPenDefault);
+    m_presPenSpin->setFixedWidth(110);
+    addSamplerRow(6, QStringLiteral("存在惩罚"),
+                  QStringLiteral("--presence-penalty（API: presence_penalty），"
+                                 "0.0 = 禁用，默认 %1").arg(fmtNum(kPresPenDefault)),
+                  m_presPenCheck, m_presPenSpin);
+
+    m_freqPenSpin = new QDoubleSpinBox;
+    m_freqPenSpin->setRange(-2.0, 2.0);
+    m_freqPenSpin->setSingleStep(0.01);
+    m_freqPenSpin->setDecimals(2);
+    m_freqPenSpin->setValue(kFreqPenDefault);
+    m_freqPenSpin->setFixedWidth(110);
+    addSamplerRow(7, QStringLiteral("频率惩罚"),
+                  QStringLiteral("--frequency-penalty（API: frequency_penalty），"
+                                 "0.0 = 禁用，默认 %1").arg(fmtNum(kFreqPenDefault)),
+                  m_freqPenCheck, m_freqPenSpin);
+
     m_seedSpin = new QSpinBox;
     m_seedSpin->setRange(-1, 2147483647);
     m_seedSpin->setValue(kSeedDefault);
     m_seedSpin->setFixedWidth(110);
-    addSamplerRow(5, QStringLiteral("随机种子"),
+    addSamplerRow(8, QStringLiteral("随机种子"),
                   QStringLiteral("--seed，-1 = 每次随机，默认 %1").arg(kSeedDefault),
                   m_seedCheck, m_seedSpin);
 
     grid3->setColumnStretch(1, 1);
-    grid3->setRowStretch(6, 1);
+    grid3->setRowStretch(9, 1);
 
     addParamTab(body3, QStringLiteral("4、采样参数"),
                 QStringLiteral("四、采样参数：请求未指定时采用的服务端默认采样值"));
@@ -1084,7 +1118,8 @@ void MainWindow::wireLogic()
                           m_specDefaultCheck,
                           m_batchCheck, m_ubatchCheck, m_tsCheck, m_mainGpuCheck,
                           m_parallelCheck, m_tempCheck, m_topKCheck, m_topPCheck,
-                          m_minPCheck, m_repPenCheck, m_seedCheck, m_metricsCheck,
+                          m_minPCheck, m_repPenCheck, m_presPenCheck, m_freqPenCheck,
+                          m_repLastNCheck, m_seedCheck, m_metricsCheck,
                           m_timeoutCheck, m_logFileCheck, m_chatTmplCheck, m_thinkBudgetCheck,
                           m_noJinjaCheck})
         connect(cb, &QCheckBox::toggled, this, regen);
@@ -1094,6 +1129,7 @@ void MainWindow::wireLogic()
     });
     for (QSpinBox *sb : {m_threadsSpin, m_nglSpin, m_batchSpin, m_ubatchSpin,
                          m_mainGpuSpin, m_parallelSpin, m_topKSpin, m_seedSpin,
+                         m_repLastNSpin,
                          m_timeoutSpin, m_thinkBudgetSpin, m_keepSpin, m_cacheRamSpin,
                          m_ctxCpSpin, m_specNMaxSpin, m_specNMinSpin, m_specThreadsSpin,
                          m_ngModNMinSpin, m_ngModNMaxSpin, m_ngModNMatchSpin,
@@ -1101,6 +1137,7 @@ void MainWindow::wireLogic()
                          m_ngMapKNSpin, m_ngMapKMSpin, m_ngMapKHitsSpin})
         connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
     for (QDoubleSpinBox *sb : {m_tempSpin, m_topPSpin, m_minPSpin, m_repPenSpin,
+                              m_presPenSpin, m_freqPenSpin,
                               m_specPSplitSpin, m_specPMinSpin})
         connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, regen);
     for (QComboBox *cb : {m_flashCombo, m_reasoningCombo, m_splitCombo,
@@ -1316,6 +1353,12 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("--min-p") << fmtNum(m_minPSpin->value());
     if (m_repPenCheck->isChecked())
         args << QStringLiteral("--repeat-penalty") << fmtNum(m_repPenSpin->value());
+    if (m_repLastNCheck->isChecked())
+        args << QStringLiteral("--repeat-last-n") << QString::number(m_repLastNSpin->value());
+    if (m_presPenCheck->isChecked())
+        args << QStringLiteral("--presence-penalty") << fmtNum(m_presPenSpin->value());
+    if (m_freqPenCheck->isChecked())
+        args << QStringLiteral("--frequency-penalty") << fmtNum(m_freqPenSpin->value());
     if (m_seedCheck->isChecked())
         args << QStringLiteral("--seed") << QString::number(m_seedSpin->value());
 
@@ -1523,6 +1566,18 @@ void MainWindow::refreshCmdInfo()
     }
     if (m_repPenCheck->isChecked()) {
         text += QStringLiteral("--repeat-penalty %1\n").arg(fmtNum(m_repPenSpin->value()));
+        anySampler = true;
+    }
+    if (m_repLastNCheck->isChecked()) {
+        text += QStringLiteral("--repeat-last-n %1\n").arg(m_repLastNSpin->value());
+        anySampler = true;
+    }
+    if (m_presPenCheck->isChecked()) {
+        text += QStringLiteral("--presence-penalty %1\n").arg(fmtNum(m_presPenSpin->value()));
+        anySampler = true;
+    }
+    if (m_freqPenCheck->isChecked()) {
+        text += QStringLiteral("--frequency-penalty %1\n").arg(fmtNum(m_freqPenSpin->value()));
         anySampler = true;
     }
     if (m_seedCheck->isChecked()) {
@@ -1904,6 +1959,12 @@ void MainWindow::saveParams()
         o.insert(QStringLiteral("minP"), m_minPSpin->value());
     if (m_repPenCheck->isChecked() && !qFuzzyCompare(m_repPenSpin->value(), kRepPenDefault))
         o.insert(QStringLiteral("repeatPenalty"), m_repPenSpin->value());
+    if (m_repLastNCheck->isChecked() && m_repLastNSpin->value() != kRepLastNDefault)
+        o.insert(QStringLiteral("repeatLastN"), m_repLastNSpin->value());
+    if (m_presPenCheck->isChecked() && !qFuzzyCompare(m_presPenSpin->value(), kPresPenDefault))
+        o.insert(QStringLiteral("presencePenalty"), m_presPenSpin->value());
+    if (m_freqPenCheck->isChecked() && !qFuzzyCompare(m_freqPenSpin->value(), kFreqPenDefault))
+        o.insert(QStringLiteral("frequencyPenalty"), m_freqPenSpin->value());
     if (m_seedCheck->isChecked() && m_seedSpin->value() != kSeedDefault)
         o.insert(QStringLiteral("seed"), m_seedSpin->value());
     if (m_metricsCheck->isChecked())
@@ -2051,6 +2112,12 @@ void MainWindow::loadParams()
     m_minPSpin->setValue(o.value(QStringLiteral("minP")).toDouble(kMinPDefault));
     m_repPenCheck->setChecked(o.contains(QStringLiteral("repeatPenalty")));
     m_repPenSpin->setValue(o.value(QStringLiteral("repeatPenalty")).toDouble(kRepPenDefault));
+    m_repLastNCheck->setChecked(o.contains(QStringLiteral("repeatLastN")));
+    m_repLastNSpin->setValue(o.value(QStringLiteral("repeatLastN")).toInt(kRepLastNDefault));
+    m_presPenCheck->setChecked(o.contains(QStringLiteral("presencePenalty")));
+    m_presPenSpin->setValue(o.value(QStringLiteral("presencePenalty")).toDouble(kPresPenDefault));
+    m_freqPenCheck->setChecked(o.contains(QStringLiteral("frequencyPenalty")));
+    m_freqPenSpin->setValue(o.value(QStringLiteral("frequencyPenalty")).toDouble(kFreqPenDefault));
     m_seedCheck->setChecked(o.contains(QStringLiteral("seed")));
     m_seedSpin->setValue(o.value(QStringLiteral("seed")).toInt(kSeedDefault));
     m_metricsCheck->setChecked(o.value(QStringLiteral("metrics")).toBool(false));
@@ -2113,6 +2180,7 @@ void MainWindow::parseArgsText()
             {QStringLiteral("n-parallel"), QStringLiteral("np")},
             {QStringLiteral("temperature"), QStringLiteral("temp")},
             {QStringLiteral("timeout"), QStringLiteral("to")},
+            {QStringLiteral("repeat-last-n"), QStringLiteral("replastn")},
             {QStringLiteral("cache-ram"), QStringLiteral("cacheram")},
             {QStringLiteral("ctx-checkpoints"), QStringLiteral("ctxcp")},
             {QStringLiteral("swa-checkpoints"), QStringLiteral("ctxcp")},
@@ -2317,6 +2385,18 @@ void MainWindow::parseArgsText()
     if (opt.contains(QStringLiteral("repeat-penalty"))) {
         m_repPenCheck->setChecked(true);
         m_repPenSpin->setValue(opt[QStringLiteral("repeat-penalty")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("replastn"))) {
+        m_repLastNCheck->setChecked(true);
+        m_repLastNSpin->setValue(opt[QStringLiteral("replastn")].toInt());
+    }
+    if (opt.contains(QStringLiteral("presence-penalty"))) {
+        m_presPenCheck->setChecked(true);
+        m_presPenSpin->setValue(opt[QStringLiteral("presence-penalty")].toDouble());
+    }
+    if (opt.contains(QStringLiteral("frequency-penalty"))) {
+        m_freqPenCheck->setChecked(true);
+        m_freqPenSpin->setValue(opt[QStringLiteral("frequency-penalty")].toDouble());
     }
     if (opt.contains(QStringLiteral("seed"))) {
         m_seedCheck->setChecked(true);

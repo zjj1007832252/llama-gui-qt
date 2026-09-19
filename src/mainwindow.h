@@ -119,6 +119,9 @@ private:
     QCheckBox *m_topPCheck = nullptr;     QDoubleSpinBox *m_topPSpin = nullptr;
     QCheckBox *m_minPCheck = nullptr;     QDoubleSpinBox *m_minPSpin = nullptr;
     QCheckBox *m_repPenCheck = nullptr;   QDoubleSpinBox *m_repPenSpin = nullptr;
+    QCheckBox *m_presPenCheck = nullptr;  QDoubleSpinBox *m_presPenSpin = nullptr;
+    QCheckBox *m_freqPenCheck = nullptr;  QDoubleSpinBox *m_freqPenSpin = nullptr;
+    QCheckBox *m_repLastNCheck = nullptr; QSpinBox *m_repLastNSpin = nullptr;
     QCheckBox *m_seedCheck = nullptr;     QSpinBox *m_seedSpin = nullptr;
 
     // ---- left: service / logging ----
