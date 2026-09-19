@@ -63,6 +63,7 @@ private:
     void browseToolPath();
     void browseModelDir();
     void browseMmproj();
+    void browseSpecDraftModel();
     void generateScript();
     void chatTest();
     void bestParams();

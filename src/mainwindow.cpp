@@ -598,7 +598,10 @@ QWidget *MainWindow::createParamPanel()
     m_specModelEdit = new QLineEdit;
     m_specModelEdit->setPlaceholderText(QStringLiteral("draft 模型 .gguf 路径"));
     m_specModelEdit->setFixedWidth(200);
-    addSpecGroups({{m_specModelCheck, m_specModelEdit}});
+    auto *browseSpecModel = new QPushButton(QStringLiteral("浏览..."));
+    browseSpecModel->setFixedWidth(72);
+    connect(browseSpecModel, &QPushButton::clicked, this, &MainWindow::browseSpecDraftModel);
+    addSpecGroups({{m_specModelCheck, m_specModelEdit, browseSpecModel}});
 
     m_specNglCheck = new QCheckBox(QStringLiteral("草稿模型卸载层数"));
     m_specNglCheck->setToolTip(QStringLiteral("-ngld/--spec-draft-ngl，默认 auto"));
@@ -1623,6 +1626,18 @@ void MainWindow::browseMmproj()
     if (file.isEmpty())
         return;
     m_mmprojPath->setText(QDir::toNativeSeparators(file));
+}
+
+void MainWindow::browseSpecDraftModel()
+{
+    const QString file = QFileDialog::getOpenFileName(
+        this, QStringLiteral("选择草稿模型文件"), m_modelDir->text(),
+        QStringLiteral("GGUF 模型 (*.gguf);;所有文件 (*.*)"));
+    if (file.isEmpty())
+        return;
+    m_specModelCheck->setChecked(true);
+    m_specModelEdit->setText(QDir::toNativeSeparators(file));
+    refreshCmdInfo();
 }
 
 // ---------------------------------------------------------------- best params
