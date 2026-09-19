@@ -531,13 +531,30 @@ QWidget *MainWindow::createParamPanel()
         lb->setStyleSheet(QStringLiteral(
             "background:#f4f4f4;border:1px solid #dcdcdc;border-radius:2px;"
             "font-size:10pt;font-weight:600;color:#333;padding:2px 6px;"));
-        gridSpec->addWidget(lb, srow++, 0, 1, 2);
+        gridSpec->addWidget(lb, srow++, 0);
     };
-    auto addSpecRow = [&](QCheckBox *cb, QWidget *editor) {
-        gridSpec->addWidget(cb, srow, 0);
-        if (editor)
-            gridSpec->addWidget(editor, srow, 1);
-        ++srow;
+    // 每行由若干「标签 + 控件」组构成：组内间距 6，组间 16，行尾弹簧吸收剩余宽度。
+    // 各行独立排版（不复用网格列宽），避免多余宽度落在两个控件之间形成空隙。
+    constexpr int kSpecLabelW = 120;
+    auto addSpecGroups = [&](const QList<QList<QWidget *>> &groups) {
+        auto *rowW = new QWidget;
+        auto *h = new QHBoxLayout(rowW);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(6);
+        for (int gi = 0; gi < groups.size(); ++gi) {
+            if (gi > 0)
+                h->addSpacing(16);
+            const QList<QWidget *> &g = groups.at(gi);
+            for (int wi = 0; wi < g.size(); ++wi) {
+                // 标签列等宽，使同一行及不同行的输入框左边缘对齐
+                if (wi == 0)
+                    if (auto *cb = qobject_cast<QCheckBox *>(g.at(wi)))
+                        cb->setFixedWidth(kSpecLabelW);
+                h->addWidget(g.at(wi));
+            }
+        }
+        h->addStretch();
+        gridSpec->addWidget(rowW, srow++, 0);
     };
 
     addSpecSection(QStringLiteral("投机方式"));
@@ -552,7 +569,7 @@ QWidget *MainWindow::createParamPanel()
                                QStringLiteral("ngram-cache")});
     m_specTypeCombo->setCurrentText(QStringLiteral("draft-mtp"));
     m_specTypeCombo->setFixedWidth(200);
-    addSpecRow(m_specTypeCheck, m_specTypeCombo);
+    addSpecGroups({{m_specTypeCheck, m_specTypeCombo}});
 
     // 起草上限 / 下限 两项并排
     m_specNMaxCheck = new QCheckBox(QStringLiteral("起草上限"));
@@ -560,24 +577,20 @@ QWidget *MainWindow::createParamPanel()
     m_specNMaxSpin = new QSpinBox;
     m_specNMaxSpin->setRange(0, 1024);
     m_specNMaxSpin->setValue(kSpecNMaxDefault);
-    m_specNMaxSpin->setFixedWidth(92);
+    m_specNMaxSpin->setFixedWidth(90);
 
     m_specNMinCheck = new QCheckBox(QStringLiteral("起草下限"));
     m_specNMinCheck->setToolTip(QStringLiteral("--spec-draft-n-min，默认 %1").arg(kSpecNMinDefault));
     m_specNMinSpin = new QSpinBox;
     m_specNMinSpin->setRange(0, 1024);
     m_specNMinSpin->setValue(kSpecNMinDefault);
-    m_specNMinSpin->setFixedWidth(92);
+    m_specNMinSpin->setFixedWidth(90);
 
     m_specDefaultCheck = new QCheckBox(QStringLiteral("一键默认投机配置"));
     m_specDefaultCheck->setToolTip(QStringLiteral("--spec-default，启用默认投机解码配置"));
 
-    gridSpec->addWidget(m_specNMaxCheck, srow, 0);
-    gridSpec->addWidget(m_specNMaxSpin, srow, 1);
-    gridSpec->addWidget(m_specNMinCheck, srow, 2);
-    gridSpec->addWidget(m_specNMinSpin, srow, 3);
-    ++srow;
-    addSpecRow(m_specDefaultCheck, nullptr);
+    addSpecGroups({{m_specNMaxCheck, m_specNMaxSpin}, {m_specNMinCheck, m_specNMinSpin}});
+    addSpecGroups({{m_specDefaultCheck}});
 
     addSpecSection(QStringLiteral("草稿模型"));
     m_specModelCheck = new QCheckBox(QStringLiteral("草稿模型路径"));
@@ -585,30 +598,27 @@ QWidget *MainWindow::createParamPanel()
     m_specModelEdit = new QLineEdit;
     m_specModelEdit->setPlaceholderText(QStringLiteral("draft 模型 .gguf 路径"));
     m_specModelEdit->setFixedWidth(200);
-    addSpecRow(m_specModelCheck, m_specModelEdit);
+    addSpecGroups({{m_specModelCheck, m_specModelEdit}});
 
     m_specNglCheck = new QCheckBox(QStringLiteral("草稿模型卸载层数"));
     m_specNglCheck->setToolTip(QStringLiteral("-ngld/--spec-draft-ngl，默认 auto"));
     m_specNglEdit = new QLineEdit;
     m_specNglEdit->setPlaceholderText(QStringLiteral("数字 / auto / all"));
     m_specNglEdit->setFixedWidth(200);
-    addSpecRow(m_specNglCheck, m_specNglEdit);
+    addSpecGroups({{m_specNglCheck, m_specNglEdit}});
 
     m_specThreadsCheck = new QCheckBox(QStringLiteral("草稿模型线程数"));
     m_specThreadsCheck->setToolTip(QStringLiteral("-td/--spec-draft-threads，默认与 --threads 相同"));
     m_specThreadsSpin = new QSpinBox;
     m_specThreadsSpin->setRange(1, 1024);
     m_specThreadsSpin->setValue(12);
-    m_specThreadsSpin->setFixedWidth(92);
+    m_specThreadsSpin->setFixedWidth(90);
 
     m_specCpuMoeCheck = new QCheckBox(QStringLiteral("草稿CPU MoE"));
     m_specCpuMoeCheck->setToolTip(
         QStringLiteral("-cmoed/--spec-draft-cpu-moe，草稿模型的 MoE 权重全部放 CPU"));
 
-    gridSpec->addWidget(m_specThreadsCheck, srow, 0);
-    gridSpec->addWidget(m_specThreadsSpin, srow, 1);
-    gridSpec->addWidget(m_specCpuMoeCheck, srow, 2);
-    ++srow;
+    addSpecGroups({{m_specThreadsCheck, m_specThreadsSpin}, {m_specCpuMoeCheck}});
 
     addSpecSection(QStringLiteral("强度微调"));
     m_specPSplitSpin = new QDoubleSpinBox;
@@ -616,7 +626,7 @@ QWidget *MainWindow::createParamPanel()
     m_specPSplitSpin->setSingleStep(0.05);
     m_specPSplitSpin->setDecimals(2);
     m_specPSplitSpin->setValue(kSpecPSplitDefault);
-    m_specPSplitSpin->setFixedWidth(110);
+    m_specPSplitSpin->setFixedWidth(90);
     m_specPSplitCheck = new QCheckBox(QStringLiteral("分裂概率"));
     m_specPSplitCheck->setToolTip(
         QStringLiteral("--spec-draft-p-split，默认 %1").arg(fmtNum(kSpecPSplitDefault)));
@@ -626,52 +636,44 @@ QWidget *MainWindow::createParamPanel()
     m_specPMinSpin->setSingleStep(0.05);
     m_specPMinSpin->setDecimals(2);
     m_specPMinSpin->setValue(kSpecPMinDefault);
-    m_specPMinSpin->setFixedWidth(110);
+    m_specPMinSpin->setFixedWidth(90);
     m_specPMinCheck = new QCheckBox(QStringLiteral("最低投机概率"));
     m_specPMinCheck->setToolTip(
         QStringLiteral("--spec-draft-p-min，默认 %1").arg(fmtNum(kSpecPMinDefault)));
 
-    gridSpec->addWidget(m_specPSplitCheck, srow, 0);
-    gridSpec->addWidget(m_specPSplitSpin, srow, 1);
-    gridSpec->addWidget(m_specPMinCheck, srow, 2);
-    gridSpec->addWidget(m_specPMinSpin, srow, 3);
-    ++srow;
+    addSpecGroups({{m_specPSplitCheck, m_specPSplitSpin}, {m_specPMinCheck, m_specPMinSpin}});
 
     addSpecSection(QStringLiteral("ngram-mod"));
     m_ngModNMinSpin = new QSpinBox;
     m_ngModNMinSpin->setRange(0, 100000);
     m_ngModNMinSpin->setValue(kNgModNMinDefault);
-    m_ngModNMinSpin->setFixedWidth(110);
+    m_ngModNMinSpin->setFixedWidth(90);
     m_ngModNMinCheck = new QCheckBox(QStringLiteral("最小token"));
     m_ngModNMinCheck->setToolTip(QStringLiteral("--spec-ngram-mod-n-min，默认 %1").arg(kNgModNMinDefault));
 
     m_ngModNMaxSpin = new QSpinBox;
     m_ngModNMaxSpin->setRange(0, 100000);
     m_ngModNMaxSpin->setValue(kNgModNMaxDefault);
-    m_ngModNMaxSpin->setFixedWidth(110);
+    m_ngModNMaxSpin->setFixedWidth(90);
     m_ngModNMaxCheck = new QCheckBox(QStringLiteral("最大token"));
     m_ngModNMaxCheck->setToolTip(QStringLiteral("--spec-ngram-mod-n-max，默认 %1").arg(kNgModNMaxDefault));
 
     m_ngModNMatchSpin = new QSpinBox;
     m_ngModNMatchSpin->setRange(0, 100000);
     m_ngModNMatchSpin->setValue(kNgModNMatchDefault);
-    m_ngModNMatchSpin->setFixedWidth(110);
+    m_ngModNMatchSpin->setFixedWidth(90);
     m_ngModNMatchCheck = new QCheckBox(QStringLiteral("查找长度"));
     m_ngModNMatchCheck->setToolTip(
         QStringLiteral("--spec-ngram-mod-n-match，默认 %1").arg(kNgModNMatchDefault));
 
-    gridSpec->addWidget(m_ngModNMinCheck, srow, 0);
-    gridSpec->addWidget(m_ngModNMinSpin, srow, 1);
-    gridSpec->addWidget(m_ngModNMaxCheck, srow, 2);
-    gridSpec->addWidget(m_ngModNMaxSpin, srow, 3);
-    ++srow;
-    addSpecRow(m_ngModNMatchCheck, m_ngModNMatchSpin);
+    addSpecGroups({{m_ngModNMinCheck, m_ngModNMinSpin}, {m_ngModNMaxCheck, m_ngModNMaxSpin}});
+    addSpecGroups({{m_ngModNMatchCheck, m_ngModNMatchSpin}});
 
     addSpecSection(QStringLiteral("ngram-simple"));
     m_ngSimpleNSpin = new QSpinBox;
     m_ngSimpleNSpin->setRange(0, 100000);
     m_ngSimpleNSpin->setValue(kNgSimpleNDefault);
-    m_ngSimpleNSpin->setFixedWidth(110);
+    m_ngSimpleNSpin->setFixedWidth(90);
     m_ngSimpleNCheck = new QCheckBox(QStringLiteral("查找长度 N"));
     m_ngSimpleNCheck->setToolTip(
         QStringLiteral("--spec-ngram-simple-size-n，默认 %1").arg(kNgSimpleNDefault));
@@ -679,7 +681,7 @@ QWidget *MainWindow::createParamPanel()
     m_ngSimpleMSpin = new QSpinBox;
     m_ngSimpleMSpin->setRange(0, 100000);
     m_ngSimpleMSpin->setValue(kNgSimpleMDefault);
-    m_ngSimpleMSpin->setFixedWidth(110);
+    m_ngSimpleMSpin->setFixedWidth(90);
     m_ngSimpleMCheck = new QCheckBox(QStringLiteral("起草长度 M"));
     m_ngSimpleMCheck->setToolTip(
         QStringLiteral("--spec-ngram-simple-size-m，默认 %1").arg(kNgSimpleMDefault));
@@ -687,23 +689,19 @@ QWidget *MainWindow::createParamPanel()
     m_ngSimpleHitsSpin = new QSpinBox;
     m_ngSimpleHitsSpin->setRange(0, 100000);
     m_ngSimpleHitsSpin->setValue(kNgSimpleHitsDefault);
-    m_ngSimpleHitsSpin->setFixedWidth(110);
+    m_ngSimpleHitsSpin->setFixedWidth(90);
     m_ngSimpleHitsCheck = new QCheckBox(QStringLiteral("最小命中次数"));
     m_ngSimpleHitsCheck->setToolTip(
         QStringLiteral("--spec-ngram-simple-min-hits，默认 %1").arg(kNgSimpleHitsDefault));
 
-    gridSpec->addWidget(m_ngSimpleNCheck, srow, 0);
-    gridSpec->addWidget(m_ngSimpleNSpin, srow, 1);
-    gridSpec->addWidget(m_ngSimpleMCheck, srow, 2);
-    gridSpec->addWidget(m_ngSimpleMSpin, srow, 3);
-    ++srow;
-    addSpecRow(m_ngSimpleHitsCheck, m_ngSimpleHitsSpin);
+    addSpecGroups({{m_ngSimpleNCheck, m_ngSimpleNSpin}, {m_ngSimpleMCheck, m_ngSimpleMSpin}});
+    addSpecGroups({{m_ngSimpleHitsCheck, m_ngSimpleHitsSpin}});
 
     addSpecSection(QStringLiteral("ngram-map-k"));
     m_ngMapKNSpin = new QSpinBox;
     m_ngMapKNSpin->setRange(0, 100000);
     m_ngMapKNSpin->setValue(kNgMapKNDefault);
-    m_ngMapKNSpin->setFixedWidth(110);
+    m_ngMapKNSpin->setFixedWidth(90);
     m_ngMapKNCheck = new QCheckBox(QStringLiteral("查找长度 N"));
     m_ngMapKNCheck->setToolTip(
         QStringLiteral("--spec-ngram-map-k-size-n，默认 %1").arg(kNgMapKNDefault));
@@ -711,7 +709,7 @@ QWidget *MainWindow::createParamPanel()
     m_ngMapKMSpin = new QSpinBox;
     m_ngMapKMSpin->setRange(0, 100000);
     m_ngMapKMSpin->setValue(kNgMapKMDefault);
-    m_ngMapKMSpin->setFixedWidth(110);
+    m_ngMapKMSpin->setFixedWidth(90);
     m_ngMapKMCheck = new QCheckBox(QStringLiteral("起草长度 M"));
     m_ngMapKMCheck->setToolTip(
         QStringLiteral("--spec-ngram-map-k-size-m，默认 %1").arg(kNgMapKMDefault));
@@ -719,20 +717,15 @@ QWidget *MainWindow::createParamPanel()
     m_ngMapKHitsSpin = new QSpinBox;
     m_ngMapKHitsSpin->setRange(0, 100000);
     m_ngMapKHitsSpin->setValue(kNgMapKHitsDefault);
-    m_ngMapKHitsSpin->setFixedWidth(110);
+    m_ngMapKHitsSpin->setFixedWidth(90);
     m_ngMapKHitsCheck = new QCheckBox(QStringLiteral("最小命中次数"));
     m_ngMapKHitsCheck->setToolTip(
         QStringLiteral("--spec-ngram-map-k-min-hits，默认 %1").arg(kNgMapKHitsDefault));
 
-    gridSpec->addWidget(m_ngMapKNCheck, srow, 0);
-    gridSpec->addWidget(m_ngMapKNSpin, srow, 1);
-    gridSpec->addWidget(m_ngMapKMCheck, srow, 2);
-    gridSpec->addWidget(m_ngMapKMSpin, srow, 3);
-    ++srow;
-    addSpecRow(m_ngMapKHitsCheck, m_ngMapKHitsSpin);
+    addSpecGroups({{m_ngMapKNCheck, m_ngMapKNSpin}, {m_ngMapKMCheck, m_ngMapKMSpin}});
+    addSpecGroups({{m_ngMapKHitsCheck, m_ngMapKHitsSpin}});
 
-    gridSpec->setColumnStretch(1, 1);
-    gridSpec->setColumnStretch(3, 1);
+    gridSpec->setColumnStretch(0, 1);
     gridSpec->setRowStretch(srow, 1);
 
     addParamTab(bodySpec, QStringLiteral("3、投机解码"),
