@@ -56,6 +56,9 @@ constexpr double kRepPenDefault = 1.00;
 constexpr int kSeedDefault = -1;          // -1 = 随机
 constexpr int kTimeoutDefault = 3600;
 constexpr int kThinkBudgetDefault = -1;   // -1 = 不限制
+constexpr int kKeepDefault = 0;           // 0 = 不保留；-1 = 保留全部
+constexpr int kCacheRamDefault = 8192;    // MiB；-1 = 不限制，0 = 关闭
+constexpr int kCtxCheckpointsDefault = 32;
 
 // 浮点参数去掉多余的小数零，避免命令行出现 0.80 / 1.00 这类写法
 QString fmtNum(double v)
@@ -464,10 +467,51 @@ QWidget *MainWindow::createParamPanel()
     m_cacheVCombo->setFixedWidth(200);
     addRow(grid2, 1, m_cacheVCheck, m_cacheVCombo);
 
-    grid2->setColumnStretch(1, 1);
-    grid2->setRowStretch(2, 1);
+    // 上下文缓存相关：默认值取自 server，勾选后才输出参数
+    m_keepCheck = new QCheckBox(QStringLiteral("保留初始Prompt"));
+    m_keepCheck->setToolTip(QStringLiteral("--keep，从初始 prompt 保留的 token 数，默认 %1（-1 = 全部保留）")
+                                .arg(kKeepDefault));
+    m_keepSpin = new QSpinBox;
+    m_keepSpin->setRange(-1, 999999);
+    m_keepSpin->setValue(kKeepDefault);
+    m_keepSpin->setFixedWidth(110);
+    addRow(grid2, 2, m_keepCheck, m_keepSpin);
 
-    addParamTab(body2, QStringLiteral("2、KV缓存"), QStringLiteral("二、KV 缓存量化类型"));
+    m_cacheRamCheck = new QCheckBox(QStringLiteral("缓存上限(MiB)"));
+    m_cacheRamCheck->setToolTip(QStringLiteral("-cram/--cache-ram，prompt 缓存上限，默认 %1"
+                                               "（-1 = 不限制，0 = 关闭）")
+                                    .arg(kCacheRamDefault));
+    m_cacheRamSpin = new QSpinBox;
+    m_cacheRamSpin->setRange(-1, 1048576);
+    m_cacheRamSpin->setValue(kCacheRamDefault);
+    m_cacheRamSpin->setFixedWidth(110);
+    addRow(grid2, 3, m_cacheRamCheck, m_cacheRamSpin);
+
+    m_ctxCpCheck = new QCheckBox(QStringLiteral("上下文检查点"));
+    m_ctxCpCheck->setToolTip(QStringLiteral("-ctxcp/--ctx-checkpoints，每个 slot 的上下文检查点数量，默认 %1")
+                                 .arg(kCtxCheckpointsDefault));
+    m_ctxCpSpin = new QSpinBox;
+    m_ctxCpSpin->setRange(0, 1024);
+    m_ctxCpSpin->setValue(kCtxCheckpointsDefault);
+    m_ctxCpSpin->setFixedWidth(110);
+    addRow(grid2, 4, m_ctxCpCheck, m_ctxCpSpin);
+
+    m_ctxShiftCheck = new QCheckBox(QStringLiteral("上下文滑动"));
+    m_ctxShiftCheck->setToolTip(
+        QStringLiteral("--context-shift，无限文本生成时启用上下文滑动（默认关闭）"));
+    addRow(grid2, 5, m_ctxShiftCheck, nullptr);
+
+    m_kvuCheck = new QCheckBox(QStringLiteral("统一KV缓冲"));
+    m_kvuCheck->setToolTip(
+        QStringLiteral("-kvu/--kv-unified，所有序列共用一个 KV 缓冲区（默认在 slot 数为 auto 时启用）"));
+    addRow(grid2, 6, m_kvuCheck, nullptr);
+
+    grid2->setColumnStretch(1, 1);
+    grid2->setRowStretch(7, 1);
+
+    addParamTab(body2, QStringLiteral("2、上下文缓存"),
+                QStringLiteral("二、上下文缓存：KV 缓存量化、prompt 保留与缓存上限、"
+                               "上下文检查点与滑动、统一 KV 缓冲"));
 
     // 三、采样参数：默认值为 server 内置值，勾选后才输出参数
     auto *body3 = new QWidget;
@@ -802,6 +846,8 @@ void MainWindow::wireLogic()
     for (QCheckBox *cb : {m_ctxCheck, m_threadsCheck, m_flashCheck, m_nglCheck,
                           m_noMmapCheck, m_cpuMoeCheck, m_specCheck, m_reasoningCheck,
                           m_splitCheck, m_mmapLoadCheck, m_cacheKCheck, m_cacheVCheck,
+                          m_keepCheck, m_cacheRamCheck, m_ctxCpCheck, m_ctxShiftCheck,
+                          m_kvuCheck,
                           m_batchCheck, m_ubatchCheck, m_tsCheck, m_mainGpuCheck,
                           m_parallelCheck, m_tempCheck, m_topKCheck, m_topPCheck,
                           m_minPCheck, m_repPenCheck, m_seedCheck, m_metricsCheck,
@@ -813,7 +859,8 @@ void MainWindow::wireLogic()
     });
     for (QSpinBox *sb : {m_threadsSpin, m_specSpin, m_nglSpin, m_batchSpin, m_ubatchSpin,
                          m_mainGpuSpin, m_parallelSpin, m_topKSpin, m_seedSpin,
-                         m_timeoutSpin, m_thinkBudgetSpin})
+                         m_timeoutSpin, m_thinkBudgetSpin, m_keepSpin, m_cacheRamSpin,
+                         m_ctxCpSpin})
         connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this, regen);
     for (QDoubleSpinBox *sb : {m_tempSpin, m_topPSpin, m_minPSpin, m_repPenSpin})
         connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, regen);
@@ -933,6 +980,17 @@ QStringList MainWindow::buildServerArgs() const
     if (m_cacheVCheck->isChecked() && !(vQuant && flashExplicitOff))
         args << QStringLiteral("-ctv") << m_cacheVCombo->currentText();
 
+    if (m_keepCheck->isChecked())
+        args << QStringLiteral("--keep") << QString::number(m_keepSpin->value());
+    if (m_cacheRamCheck->isChecked())
+        args << QStringLiteral("--cache-ram") << QString::number(m_cacheRamSpin->value());
+    if (m_ctxCpCheck->isChecked())
+        args << QStringLiteral("--ctx-checkpoints") << QString::number(m_ctxCpSpin->value());
+    if (m_ctxShiftCheck->isChecked())
+        args << QStringLiteral("--context-shift");
+    if (m_kvuCheck->isChecked())
+        args << QStringLiteral("-kvu");
+
     if (m_nglCheck->isChecked())
         args << QStringLiteral("-ngl") << QString::number(m_nglSpin->value());
     if (m_threadsCheck->isChecked())
@@ -1023,7 +1081,7 @@ void MainWindow::refreshCmdInfo()
     const bool flashOffNow = m_flashCheck->isChecked() && m_flashCombo->currentText() == QStringLiteral("off");
     const bool vQuantNow = m_cacheVCheck->isChecked() && m_cacheVCombo->currentText() != QLatin1String("f16") &&
                            m_cacheVCombo->currentText() != QLatin1String("f32");
-    text += QStringLiteral("# 二、KV 缓存量化类型\n");
+    text += QStringLiteral("# 二、上下文缓存\n");
     bool anyCache = false;
     if (m_cacheKCheck->isChecked()) {
         text += QStringLiteral("--cache-type-k %1\n").arg(m_cacheKCombo->currentText());
@@ -1033,8 +1091,19 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--cache-type-v %1\n").arg(m_cacheVCombo->currentText());
         anyCache = true;
     }
-    if (!anyCache)
-        text += QStringLiteral("(未启用，使用 server 默认 f16)\n");
+    if (m_keepCheck->isChecked())
+        text += QStringLiteral("--keep %1\n").arg(m_keepSpin->value());
+    if (m_cacheRamCheck->isChecked())
+        text += QStringLiteral("--cache-ram %1\n").arg(m_cacheRamSpin->value());
+    if (m_ctxCpCheck->isChecked())
+        text += QStringLiteral("--ctx-checkpoints %1\n").arg(m_ctxCpSpin->value());
+    if (m_ctxShiftCheck->isChecked())
+        text += QStringLiteral("--context-shift\n");
+    if (m_kvuCheck->isChecked())
+        text += QStringLiteral("--kv-unified\n");
+    if (!anyCache && !m_keepCheck->isChecked() && !m_cacheRamCheck->isChecked() &&
+        !m_ctxCpCheck->isChecked() && !m_ctxShiftCheck->isChecked() && !m_kvuCheck->isChecked())
+        text += QStringLiteral("(未启用，使用 server 默认 f16 缓存与默认缓存策略)\n");
     text += QLatin1Char('\n');
     text += QStringLiteral("# 一、核心基础参数\n");
     if (m_nglCheck->isChecked())
@@ -1381,6 +1450,16 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("cacheK"), m_cacheKCombo->currentText());
     o.insert(QStringLiteral("cacheVEnabled"), m_cacheVCheck->isChecked());
     o.insert(QStringLiteral("cacheV"), m_cacheVCombo->currentText());
+    if (m_keepCheck->isChecked() && m_keepSpin->value() != kKeepDefault)
+        o.insert(QStringLiteral("keep"), m_keepSpin->value());
+    if (m_cacheRamCheck->isChecked() && m_cacheRamSpin->value() != kCacheRamDefault)
+        o.insert(QStringLiteral("cacheRam"), m_cacheRamSpin->value());
+    if (m_ctxCpCheck->isChecked() && m_ctxCpSpin->value() != kCtxCheckpointsDefault)
+        o.insert(QStringLiteral("ctxCheckpoints"), m_ctxCpSpin->value());
+    if (m_ctxShiftCheck->isChecked())
+        o.insert(QStringLiteral("contextShift"), true);
+    if (m_kvuCheck->isChecked())
+        o.insert(QStringLiteral("kvUnified"), true);
     o.insert(QStringLiteral("localOnly"), m_localOnlyCheck->isChecked());
     o.insert(QStringLiteral("listen"), m_listenEdit->text());
     o.insert(QStringLiteral("port"), m_portEdit->text());
@@ -1479,6 +1558,16 @@ void MainWindow::loadParams()
     m_cacheVCheck->setChecked(o.value(QStringLiteral("cacheVEnabled")).toBool(false));
     m_cacheVCombo->setCurrentText(o.value(QStringLiteral("cacheV"))
                                       .toString(o.value(QStringLiteral("cacheTypeV")).toString(QStringLiteral("f16"))));
+    // 上下文缓存相关：配置中无对应键 = 采用 server 默认值，不勾选并复位默认值
+    m_keepCheck->setChecked(o.contains(QStringLiteral("keep")));
+    m_keepSpin->setValue(o.value(QStringLiteral("keep")).toInt(kKeepDefault));
+    m_cacheRamCheck->setChecked(o.contains(QStringLiteral("cacheRam")));
+    m_cacheRamSpin->setValue(o.value(QStringLiteral("cacheRam")).toInt(kCacheRamDefault));
+    m_ctxCpCheck->setChecked(o.contains(QStringLiteral("ctxCheckpoints")));
+    m_ctxCpSpin->setValue(
+        o.value(QStringLiteral("ctxCheckpoints")).toInt(kCtxCheckpointsDefault));
+    m_ctxShiftCheck->setChecked(o.value(QStringLiteral("contextShift")).toBool(false));
+    m_kvuCheck->setChecked(o.value(QStringLiteral("kvUnified")).toBool(false));
     m_localOnlyCheck->setChecked(o.value(QStringLiteral("localOnly")).toBool(true));
     m_listenEdit->setText(o.value(QStringLiteral("listen")).toString(QStringLiteral("127.0.0.1")));
     m_portEdit->setText(o.value(QStringLiteral("port")).toString(QStringLiteral("8090")));
@@ -1569,12 +1658,16 @@ void MainWindow::parseArgsText()
             {QStringLiteral("n-parallel"), QStringLiteral("np")},
             {QStringLiteral("temperature"), QStringLiteral("temp")},
             {QStringLiteral("timeout"), QStringLiteral("to")},
+            {QStringLiteral("cache-ram"), QStringLiteral("cacheram")},
+            {QStringLiteral("ctx-checkpoints"), QStringLiteral("ctxcp")},
+            {QStringLiteral("swa-checkpoints"), QStringLiteral("ctxcp")},
         };
         if (alias.contains(key))
             key = alias[key];
         if (key == QLatin1String("no-webui") || key == QLatin1String("no-mmap") ||
             key == QLatin1String("mmap") || key == QLatin1String("cpu-moe") ||
-            key == QLatin1String("metrics")) {
+            key == QLatin1String("metrics") || key == QLatin1String("context-shift") ||
+            key == QLatin1String("kv-unified") || key == QLatin1String("kvu")) {
             flags << key;
         } else if (i + 1 < tokens.size() && !tokens[i + 1].startsWith(QLatin1Char('-'))) {
             opt.insert(key, tokens[++i]);
@@ -1713,6 +1806,22 @@ void MainWindow::parseArgsText()
         m_thinkBudgetCheck->setChecked(true);
         m_thinkBudgetSpin->setValue(opt[QStringLiteral("reasoning-budget")].toInt());
     }
+    if (opt.contains(QStringLiteral("keep"))) {
+        m_keepCheck->setChecked(true);
+        m_keepSpin->setValue(opt[QStringLiteral("keep")].toInt());
+    }
+    if (opt.contains(QStringLiteral("cacheram"))) {
+        m_cacheRamCheck->setChecked(true);
+        m_cacheRamSpin->setValue(opt[QStringLiteral("cacheram")].toInt());
+    }
+    if (opt.contains(QStringLiteral("ctxcp"))) {
+        m_ctxCpCheck->setChecked(true);
+        m_ctxCpSpin->setValue(opt[QStringLiteral("ctxcp")].toInt());
+    }
+    if (flags.contains(QLatin1String("context-shift")))
+        m_ctxShiftCheck->setChecked(true);
+    if (flags.contains(QLatin1String("kv-unified")) || flags.contains(QLatin1String("kvu")))
+        m_kvuCheck->setChecked(true);
 
     refreshAll();
     QString msg = QStringLiteral("已解析并应用 %1 个参数选项").arg(opt.size() + flags.size());

@@ -111,6 +111,11 @@ private:
     QCheckBox *m_mmapLoadCheck = nullptr;
     QCheckBox *m_cacheKCheck = nullptr;  QComboBox *m_cacheKCombo = nullptr;
     QCheckBox *m_cacheVCheck = nullptr;  QComboBox *m_cacheVCombo = nullptr;
+    QCheckBox *m_keepCheck = nullptr;     QSpinBox *m_keepSpin = nullptr;
+    QCheckBox *m_cacheRamCheck = nullptr; QSpinBox *m_cacheRamSpin = nullptr;
+    QCheckBox *m_ctxCpCheck = nullptr;    QSpinBox *m_ctxCpSpin = nullptr;
+    QCheckBox *m_ctxShiftCheck = nullptr;
+    QCheckBox *m_kvuCheck = nullptr;
 
     // ---- left: command info + buttons ----
     QPlainTextEdit *m_cmdInfo = nullptr;
