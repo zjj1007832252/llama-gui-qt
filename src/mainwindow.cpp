@@ -26,6 +26,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollArea>
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -34,7 +35,6 @@
 #include <QTextStream>
 #include <QThread>
 #include <QTimer>
-#include <QToolButton>
 #include <QUrl>
 
 #include <algorithm>
@@ -75,7 +75,7 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(QStringLiteral("llama.cpp本地启动器（多参数）、启动参数管理工具、最优启动参数测试、"
                                  "多尺寸上下文批量测速工具、CPU多线程批量测速工具  @%1")
                       .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy.MM.dd hh:mm"))));
-    resize(1230, 780);
+    resize(1230, 880);
 
     auto *root = new QHBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -85,11 +85,12 @@ MainWindow::MainWindow(QWidget *parent)
     left->setContentsMargins(6, 8, 6, 4);
     left->setSpacing(3);
     left->addWidget(createModelPanel());
-    left->addWidget(createParamPanel(), 1);
-    left->addWidget(createCmdPanel(), 1);
+    // 参数页签需要足够的纵向空间，命令预览面板留够按钮和一屏日志即可
+    left->addWidget(createParamPanel(), 6);
+    left->addWidget(createCmdPanel(), 3);
 
     auto *leftWrap = new QWidget;
-    leftWrap->setFixedWidth(470);
+    leftWrap->setFixedWidth(440);
     leftWrap->setLayout(left);
 
     auto *right = new QVBoxLayout;
@@ -280,34 +281,28 @@ QWidget *MainWindow::createParamPanel()
 
     outer->addWidget(new QLabel(QStringLiteral("模型参数设置")));
 
-    auto makeHeader = [](const QString &title) {
-        auto *header = new QFrame;
-        header->setStyleSheet(QStringLiteral(
-            "QFrame{background:#fafafa;border:1px solid #cfcfcf;border-radius:2px;}"));
-        auto *hl = new QHBoxLayout(header);
-        hl->setContentsMargins(8, 3, 8, 3);
-        auto *icon = new QLabel(QStringLiteral("🔧"));
-        icon->setStyleSheet(QStringLiteral("border:none;background:transparent;font-size:12pt;"));
-        auto *cap = new QLabel(title);
-        cap->setStyleSheet(QStringLiteral(
-            "border:none;background:transparent;font-size:10.5pt;font-weight:600;"));
-        auto *arrow = new QToolButton;
-        arrow->setText(QStringLiteral("▼"));
-        arrow->setAutoRaise(true);
-        arrow->setStyleSheet(QStringLiteral("border:none;background:transparent;color:#555;"));
-        hl->addWidget(icon);
-        hl->addSpacing(4);
-        hl->addWidget(cap);
-        hl->addStretch();
-        hl->addWidget(arrow);
-        return header;
+    // 四个参数分区各占一个 tab，一次只显示一块，避免面板过高
+    auto *tabs = new QTabWidget;
+    tabs->setDocumentMode(true);
+    tabs->setStyleSheet(QStringLiteral(
+        "QTabWidget::pane{border:1px solid #cfcfcf;background:#ffffff;top:-1px;}"
+        "QTabBar::tab{padding:5px 9px;font-size:10pt;background:#f0f0f0;color:#444;"
+        "border:1px solid #cfcfcf;border-bottom:none;margin-right:1px;}"
+        "QTabBar::tab:selected{background:#ffffff;color:#111;font-weight:600;}"));
+
+    auto addParamTab = [&](QWidget *content, const QString &title, const QString &tip) {
+        auto *area = new QScrollArea;
+        area->setWidgetResizable(true);
+        area->setFrameShape(QFrame::NoFrame);
+        area->setWidget(content);
+        tabs->setTabToolTip(tabs->addTab(area, title), tip);
     };
 
     auto *body = new QWidget;
     auto *grid = new QGridLayout(body);
     grid->setContentsMargins(2, 4, 2, 0);
     grid->setHorizontalSpacing(8);
-    grid->setVerticalSpacing(7);
+    grid->setVerticalSpacing(5);
 
     auto addRow = [&](QGridLayout *g, int row, QCheckBox *cb, QWidget *editor) {
         g->addWidget(cb, row, 0);
@@ -440,15 +435,16 @@ QWidget *MainWindow::createParamPanel()
 
     grid->setColumnStretch(1, 1);
 
-    outer->addWidget(makeHeader(QStringLiteral("一、核心基础参数")));
-    outer->addWidget(body);
+    addParamTab(body, QStringLiteral("1、核心基础"),
+                QStringLiteral("一、核心基础参数：上下文、线程、Flash Attn、卸载层数、"
+                               "内存映射、MoE、投机解码、批大小、多卡与并发"));
 
     // 二、KV 缓存量化类型（默认不勾选 = 使用 server 默认 f16，不输出参数）
     auto *body2 = new QWidget;
     auto *grid2 = new QGridLayout(body2);
     grid2->setContentsMargins(2, 4, 2, 0);
     grid2->setHorizontalSpacing(8);
-    grid2->setVerticalSpacing(7);
+    grid2->setVerticalSpacing(5);
 
     const QStringList cacheTypes = {QStringLiteral("f16"), QStringLiteral("q8_0"),
                                     QStringLiteral("q5_0"), QStringLiteral("q5_1"),
@@ -469,15 +465,14 @@ QWidget *MainWindow::createParamPanel()
 
     grid2->setColumnStretch(1, 1);
 
-    outer->addWidget(makeHeader(QStringLiteral("二、KV 缓存量化类型")));
-    outer->addWidget(body2);
+    addParamTab(body2, QStringLiteral("2、KV缓存"), QStringLiteral("二、KV 缓存量化类型"));
 
     // 三、采样参数：默认值为 server 内置值，勾选后才输出参数
     auto *body3 = new QWidget;
     auto *grid3 = new QGridLayout(body3);
     grid3->setContentsMargins(2, 4, 2, 0);
     grid3->setHorizontalSpacing(8);
-    grid3->setVerticalSpacing(7);
+    grid3->setVerticalSpacing(5);
 
     auto addSamplerRow = [&](int row, const QString &label, const QString &tip,
                              QCheckBox *&check, QWidget *editor) {
@@ -542,15 +537,15 @@ QWidget *MainWindow::createParamPanel()
 
     grid3->setColumnStretch(1, 1);
 
-    outer->addWidget(makeHeader(QStringLiteral("三、采样参数")));
-    outer->addWidget(body3);
+    addParamTab(body3, QStringLiteral("3、采样参数"),
+                QStringLiteral("三、采样参数：请求未指定时采用的服务端默认采样值"));
 
     // 四、服务与日志（默认值 = server 内置值）
     auto *body4 = new QWidget;
     auto *grid4 = new QGridLayout(body4);
     grid4->setContentsMargins(2, 4, 2, 0);
     grid4->setHorizontalSpacing(8);
-    grid4->setVerticalSpacing(7);
+    grid4->setVerticalSpacing(5);
 
     m_metricsCheck = new QCheckBox(QStringLiteral("Metrics监控"));
     m_metricsCheck->setToolTip(QStringLiteral("--metrics，开启 Prometheus 兼容监控端点（默认关闭）"));
@@ -599,8 +594,10 @@ QWidget *MainWindow::createParamPanel()
 
     grid4->setColumnStretch(1, 1);
 
-    outer->addWidget(makeHeader(QStringLiteral("四、服务与日志")));
-    outer->addWidget(body4);
+    addParamTab(body4, QStringLiteral("4、服务日志"),
+                QStringLiteral("四、服务与日志：监控端点、超时、日志文件、对话模板、思考预算"));
+
+    outer->addWidget(tabs, 1);
 
     auto *wrap = new QWidget;
     wrap->setLayout(outer);
