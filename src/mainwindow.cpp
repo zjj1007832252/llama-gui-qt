@@ -51,6 +51,13 @@ const char kLogFontFamily[] = "Songti SC";
 const char kLogFontFamily[] = "Noto Serif CJK SC";
 #endif
 
+// llama-server 可执行文件名：Windows 带 .exe 后缀，macOS/Linux 无后缀
+#ifdef Q_OS_WIN
+const char kServerBinary[] = "llama-server.exe";
+#else
+const char kServerBinary[] = "llama-server";
+#endif
+
 // 以下为 llama-server --help 中标注的默认值：参数不指定时 server 采用该值。
 // 界面控件初始化为这些值，且取值等于默认值时不写入 JSON 配置文件。
 constexpr int kBatchDefault = 2048;
@@ -2461,9 +2468,10 @@ void MainWindow::parseArgsText()
 
 bool MainWindow::ensureCanStart(QString *reason) const
 {
-    const QString exe = QDir(m_toolPath->text()).filePath(QStringLiteral("llama-server.exe"));
+    const QString exe = QDir(m_toolPath->text()).filePath(QString::fromLatin1(kServerBinary));
     if (!QFile::exists(exe)) {
-        if (reason) *reason = QStringLiteral("未找到 llama-server.exe，请检查「Lamma.cpp工具地址」。\n%1").arg(exe);
+        if (reason) *reason = QStringLiteral("未找到 %1，请检查「Lamma.cpp工具地址」。\n%2")
+                                    .arg(QString::fromLatin1(kServerBinary), exe);
         return false;
     }
     const QString model = modelFilePath();
@@ -2484,7 +2492,7 @@ void MainWindow::startServer()
     if (m_running)
         return;
 
-    const QString exe = QDir(m_toolPath->text()).filePath(QStringLiteral("llama-server.exe"));
+    const QString exe = QDir(m_toolPath->text()).filePath(QString::fromLatin1(kServerBinary));
     const QStringList args = buildServerArgs();
     m_serverLog->appendPlainText(QStringLiteral("[GUI] 启动: %1 %2")
                                      .arg(exe, args.join(QLatin1Char(' '))));
