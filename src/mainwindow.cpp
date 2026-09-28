@@ -42,6 +42,15 @@
 namespace {
 const QString kTaskHint = QStringLiteral("暂无统计数据，启动服务并处理请求后此处显示各 slot 的实时速度");
 
+// 日志/命令行预览用字体：原为 Windows 的宋体（SimSun），各平台选用对应的系统字体
+#ifdef Q_OS_WIN
+const char kLogFontFamily[] = "SimSun";
+#elif defined(Q_OS_MAC)
+const char kLogFontFamily[] = "Songti SC";
+#else
+const char kLogFontFamily[] = "Noto Serif CJK SC";
+#endif
+
 // 以下为 llama-server --help 中标注的默认值：参数不指定时 server 采用该值。
 // 界面控件初始化为这些值，且取值等于默认值时不写入 JSON 配置文件。
 constexpr int kBatchDefault = 2048;
@@ -140,7 +149,7 @@ MainWindow::MainWindow(QWidget *parent)
     for (QPlainTextEdit *edit : {m_runLog, m_testLog, m_serverLog}) {
         edit->setReadOnly(true);
         edit->setWordWrapMode(QTextOption::NoWrap);
-        edit->setFont(QFont(QStringLiteral("SimSun"), 10));
+        edit->setFont(QFont(QString::fromLatin1(kLogFontFamily), 10));
         edit->setMaximumBlockCount(5000);
         edit->setStyleSheet(QStringLiteral(
             "QPlainTextEdit{background:#ffffff;border:1px solid #d4d4d4;font-size:10pt;}"));
@@ -182,10 +191,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_server = new QProcess(this);
     m_server->setProcessChannelMode(QProcess::MergedChannels);
-    // console 子进程默认会弹出黑窗口，这里强制隐藏
+#ifdef Q_OS_WIN
+    // console 子进程默认会弹出黑窗口，这里强制隐藏（该 API 仅 Windows 可用）
     m_server->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
         args->flags |= 0x08000000; // CREATE_NO_WINDOW
     });
+#endif
     connect(m_server, &QProcess::readyRead, this, [this] {
         const QString text = QString::fromLocal8Bit(m_server->readAll());
         const QStringList lines = text.split(QLatin1Char('\n'));
@@ -930,7 +941,7 @@ QWidget *MainWindow::createCmdPanel()
     m_cmdInfo->setReadOnly(true);
     m_cmdInfo->setStyleSheet(QStringLiteral(
         "QPlainTextEdit{background:#ffffff;border:1px solid #b0b0b0;font-size:10pt;}"));
-    m_cmdInfo->setFont(QFont(QStringLiteral("SimSun"), 10));
+    m_cmdInfo->setFont(QFont(QString::fromLatin1(kLogFontFamily), 10));
 
     auto *btnCol = new QVBoxLayout;
     btnCol->setContentsMargins(0, 0, 0, 0);

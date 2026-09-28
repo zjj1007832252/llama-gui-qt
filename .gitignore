@@ -7,3 +7,6 @@ moc_*.h
 qrc_*.cpp
 qrc_*.h
 moc_predefs.h
+
+# macOS 构建产物
+llama_gui.app/
