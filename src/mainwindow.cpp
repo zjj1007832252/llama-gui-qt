@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -30,6 +31,7 @@
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QTextOption>
 #include <QTextStream>
@@ -391,16 +393,13 @@ QWidget *MainWindow::createParamPanel()
     m_nglSpin->setFixedWidth(110);
     addRow(grid, 3, m_nglCheck, m_nglSpin);
 
-    m_noMmapCheck = new QCheckBox(QStringLiteral("禁用内存映射"));
-    m_mmapLoadCheck = new QCheckBox(QStringLiteral("内存映射加载"));
-    // 两个内存映射选项合并到同一行
-    auto *mmapRow = new QWidget;
-    auto *mmapL = new QHBoxLayout(mmapRow);
-    mmapL->setContentsMargins(0, 0, 0, 0);
-    mmapL->setSpacing(12);
-    mmapL->addWidget(m_mmapLoadCheck);
-    mmapL->addStretch();
-    addRow(grid, 4, m_noMmapCheck, mmapRow);
+    m_loadModeCheck = new QCheckBox(QStringLiteral("加载模式"));
+    m_loadModeCombo = new QComboBox;
+    m_loadModeCombo->addItems({QStringLiteral("auto"), QStringLiteral("none"),
+                               QStringLiteral("mmap"), QStringLiteral("mlock"),
+                               QStringLiteral("mmap+mlock"), QStringLiteral("dio")});
+    m_loadModeCombo->setFixedWidth(200);
+    addRow(grid, 4, m_loadModeCheck, m_loadModeCombo);
 
     m_cpuMoeCheck = new QCheckBox(QStringLiteral("CPU MoE"));
     addRow(grid, 5, m_cpuMoeCheck, nullptr);
@@ -1123,8 +1122,8 @@ void MainWindow::wireLogic()
 {
     auto regen = [this] { refreshAll(); };
     for (QCheckBox *cb : {m_ctxCheck, m_threadsCheck, m_flashCheck, m_nglCheck,
-                          m_noMmapCheck, m_cpuMoeCheck, m_reasoningCheck,
-                          m_splitCheck, m_mmapLoadCheck, m_cacheKCheck, m_cacheVCheck,
+                          m_loadModeCheck, m_cpuMoeCheck, m_reasoningCheck,
+                          m_splitCheck, m_cacheKCheck, m_cacheVCheck,
                           m_keepCheck, m_cacheRamCheck, m_ctxCpCheck, m_ctxShiftCheck,
                           m_kvuCheck,
                           m_specTypeCheck, m_specNMaxCheck, m_specNMinCheck,
@@ -1158,9 +1157,21 @@ void MainWindow::wireLogic()
                               m_presPenSpin, m_freqPenSpin,
                               m_specPSplitSpin, m_specPMinSpin})
         connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, regen);
-    for (QComboBox *cb : {m_flashCombo, m_reasoningCombo, m_splitCombo,
-                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo, m_specTypeCombo})
+    // 样式表启用后 QComboBox 弹窗的默认委托会丢失悬停/选中高亮（悬停项被画成
+    // 纯白遮住文字），给每个下拉框单独补弹窗样式并换回标准委托
+    const QString comboPopupStyle = QStringLiteral(
+        "QComboBox QAbstractItemView{background:#ffffff;color:#2b2b2b;"
+        "border:1px solid #a0a0a0;selection-background-color:#1a7abf;"
+        "selection-color:#ffffff;outline:none;}"
+        "QComboBox QAbstractItemView::item{min-height:20px;}"
+        "QComboBox QAbstractItemView::item:hover{background:#1a7abf;color:#ffffff;}"
+        "QComboBox QAbstractItemView::item:selected{background:#1a7abf;color:#ffffff;}");
+    for (QComboBox *cb : {m_flashCombo, m_loadModeCombo, m_reasoningCombo, m_splitCombo,
+                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo, m_specTypeCombo}) {
         connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, regen);
+        cb->setStyleSheet(comboPopupStyle);
+        cb->view()->setItemDelegate(new QStyledItemDelegate(cb->view()));
+    }
     connect(m_tsEdit, &QLineEdit::textChanged, this, regen);
     connect(m_logFileEdit, &QLineEdit::textChanged, this, regen);
     connect(m_specModelEdit, &QLineEdit::textChanged, this, regen);
@@ -1173,6 +1184,8 @@ void MainWindow::wireLogic()
         refreshModelId();
         refreshCmdInfo();
     });
+    m_modelCombo->setStyleSheet(comboPopupStyle);
+    m_modelCombo->view()->setItemDelegate(new QStyledItemDelegate(m_modelCombo->view()));
 
     connect(m_localOnlyCheck, &QCheckBox::toggled, this, [this](bool on) {
         if (on)
@@ -1297,10 +1310,8 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("-fa") << m_flashCombo->currentText();
     if (m_splitCheck->isChecked())
         args << QStringLiteral("-sm") << m_splitCombo->currentText();
-    if (m_noMmapCheck->isChecked())
-        args << QStringLiteral("--no-mmap");
-    if (m_mmapLoadCheck->isChecked())
-        args << QStringLiteral("--mmap");
+    if (m_loadModeCheck->isChecked())
+        args << QStringLiteral("--load-mode") << m_loadModeCombo->currentText();
     if (m_cpuMoeCheck->isChecked())
         args << QStringLiteral("--cpu-moe");
 
@@ -1542,10 +1553,8 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--flash-attn %1\n").arg(m_flashCombo->currentText());
     if (m_splitCheck->isChecked())
         text += QStringLiteral("--split-mode %1\n").arg(m_splitCombo->currentText());
-    if (m_noMmapCheck->isChecked())
-        text += QStringLiteral("--no-mmap\n");
-    if (m_mmapLoadCheck->isChecked())
-        text += QStringLiteral("--mmap\n");
+    if (m_loadModeCheck->isChecked())
+        text += QStringLiteral("--load-mode %1\n").arg(m_loadModeCombo->currentText());
     if (m_cpuMoeCheck->isChecked())
         text += QStringLiteral("--cpu-moe\n");
     if (m_reasoningCheck->isChecked())
@@ -1885,7 +1894,8 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("flashAttn"), m_flashCombo->currentText());
     o.insert(QStringLiteral("nglEnabled"), m_nglCheck->isChecked());
     o.insert(QStringLiteral("ngl"), m_nglSpin->value());
-    o.insert(QStringLiteral("noMmap"), m_noMmapCheck->isChecked());
+    o.insert(QStringLiteral("loadModeEnabled"), m_loadModeCheck->isChecked());
+    o.insert(QStringLiteral("loadMode"), m_loadModeCombo->currentText());
     o.insert(QStringLiteral("cpuMoe"), m_cpuMoeCheck->isChecked());
     o.insert(QStringLiteral("specEnabled"), m_specTypeCheck->isChecked());
     o.insert(QStringLiteral("specDraftNMax"), m_specNMaxSpin->value());
@@ -1932,7 +1942,6 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("reasoning"), m_reasoningCombo->currentText());
     o.insert(QStringLiteral("splitEnabled"), m_splitCheck->isChecked());
     o.insert(QStringLiteral("splitMode"), m_splitCombo->currentText());
-    o.insert(QStringLiteral("mmapLoad"), m_mmapLoadCheck->isChecked());
     o.insert(QStringLiteral("cacheKEnabled"), m_cacheKCheck->isChecked());
     o.insert(QStringLiteral("cacheK"), m_cacheKCombo->currentText());
     o.insert(QStringLiteral("cacheVEnabled"), m_cacheVCheck->isChecked());
@@ -2037,7 +2046,8 @@ void MainWindow::loadParams()
     m_flashCombo->setCurrentText(o.value(QStringLiteral("flashAttn")).toString(QStringLiteral("on")));
     m_nglCheck->setChecked(o.value(QStringLiteral("nglEnabled")).toBool(true));
     m_nglSpin->setValue(o.value(QStringLiteral("ngl")).toInt(99));
-    m_noMmapCheck->setChecked(o.value(QStringLiteral("noMmap")).toBool());
+    m_loadModeCheck->setChecked(o.value(QStringLiteral("loadModeEnabled")).toBool());
+    m_loadModeCombo->setCurrentText(o.value(QStringLiteral("loadMode")).toString(QStringLiteral("auto")));
     m_cpuMoeCheck->setChecked(o.value(QStringLiteral("cpuMoe")).toBool());
     // 投机解码：兼容旧配置的 specEnabled/specDraftNMax（旧版固定 draft-mtp）
     const bool legacySpec = o.value(QStringLiteral("specEnabled")).toBool(false);
@@ -2083,7 +2093,6 @@ void MainWindow::loadParams()
     m_reasoningCombo->setCurrentText(o.value(QStringLiteral("reasoning")).toString(QStringLiteral("auto")));
     m_splitCheck->setChecked(o.value(QStringLiteral("splitEnabled")).toBool());
     m_splitCombo->setCurrentText(o.value(QStringLiteral("splitMode")).toString(QStringLiteral("layer")));
-    m_mmapLoadCheck->setChecked(o.value(QStringLiteral("mmapLoad")).toBool());
     // 兼容旧版配置里的 cacheTypeK/cacheTypeV（旧版始终输出 q4_0）
     m_cacheKCheck->setChecked(o.value(QStringLiteral("cacheKEnabled")).toBool(false));
     m_cacheKCombo->setCurrentText(o.value(QStringLiteral("cacheK"))
@@ -2186,6 +2195,7 @@ void MainWindow::parseArgsText()
             {QStringLiteral("gpu-layers"), QStringLiteral("ngl")},
             {QStringLiteral("n-gpu-layers"), QStringLiteral("ngl")},
             {QStringLiteral("split-mode"), QStringLiteral("sm")},
+            {QStringLiteral("load-mode"), QStringLiteral("lm")},
             {QStringLiteral("cache-type-k"), QStringLiteral("ctk")},
             {QStringLiteral("cache-type-v"), QStringLiteral("ctv")},
             {QStringLiteral("alias"), QStringLiteral("a")},
@@ -2245,6 +2255,10 @@ void MainWindow::parseArgsText()
         m_flashCheck->setChecked(true);
         m_flashCombo->setCurrentText(opt[QStringLiteral("fa")]);
     }
+    if (opt.contains(QStringLiteral("lm"))) {
+        m_loadModeCheck->setChecked(true);
+        m_loadModeCombo->setCurrentText(opt[QStringLiteral("lm")]);
+    }
     if (opt.contains(QStringLiteral("ngl"))) {
         m_nglCheck->setChecked(true);
         m_nglSpin->setValue(opt[QStringLiteral("ngl")].toInt());
@@ -2278,16 +2292,12 @@ void MainWindow::parseArgsText()
         m_webuiDisabled = true;
         m_closeWebBtn->setText(QStringLiteral("开启 llama.cpp 的web访问"));
     }
-    if (flags.contains(QLatin1String("no-mmap")))
-        m_noMmapCheck->setChecked(true);
     if (flags.contains(QLatin1String("cpu-moe")))
         m_cpuMoeCheck->setChecked(true);
     if (opt.contains(QStringLiteral("reasoning"))) {
         m_reasoningCheck->setChecked(true);
         m_reasoningCombo->setCurrentText(opt[QStringLiteral("reasoning")]);
     }
-    if (flags.contains(QLatin1String("mmap")))
-        m_mmapLoadCheck->setChecked(true);
     if (opt.contains(QStringLiteral("spec-type"))) {
         m_specTypeCheck->setChecked(true);
         m_specTypeCombo->setCurrentText(opt[QStringLiteral("spec-type")]);

@@ -82,7 +82,7 @@ private:
     QCheckBox *m_threadsCheck = nullptr; QSpinBox *m_threadsSpin = nullptr;
     QCheckBox *m_flashCheck = nullptr;  QComboBox *m_flashCombo = nullptr;
     QCheckBox *m_nglCheck = nullptr;    QSpinBox *m_nglSpin = nullptr;
-    QCheckBox *m_noMmapCheck = nullptr;
+    QCheckBox *m_loadModeCheck = nullptr; QComboBox *m_loadModeCombo = nullptr;
     QCheckBox *m_cpuMoeCheck = nullptr;
 
     // ---- left: speculative decoding tab ----
@@ -133,7 +133,6 @@ private:
     QCheckBox *m_thinkBudgetCheck = nullptr; QSpinBox *m_thinkBudgetSpin = nullptr;
     QCheckBox *m_reasoningCheck = nullptr;  QComboBox *m_reasoningCombo = nullptr;
     QCheckBox *m_splitCheck = nullptr;  QComboBox *m_splitCombo = nullptr;
-    QCheckBox *m_mmapLoadCheck = nullptr;
     QCheckBox *m_cacheKCheck = nullptr;  QComboBox *m_cacheKCombo = nullptr;
     QCheckBox *m_cacheVCheck = nullptr;  QComboBox *m_cacheVCombo = nullptr;
     QCheckBox *m_keepCheck = nullptr;     QSpinBox *m_keepSpin = nullptr;
