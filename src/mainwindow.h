@@ -81,9 +81,12 @@ private:
     QCheckBox *m_ctxCheck = nullptr;    QSpinBox *m_ctxSpin = nullptr;   QLineEdit *m_ctxInfo = nullptr;
     QCheckBox *m_threadsCheck = nullptr; QSpinBox *m_threadsSpin = nullptr;
     QCheckBox *m_flashCheck = nullptr;  QComboBox *m_flashCombo = nullptr;
-    QCheckBox *m_nglCheck = nullptr;    QSpinBox *m_nglSpin = nullptr;
+    QCheckBox *m_nglCheck = nullptr;    QComboBox *m_nglCombo = nullptr;
     QCheckBox *m_loadModeCheck = nullptr; QComboBox *m_loadModeCombo = nullptr;
+    QCheckBox *m_lazyModeCheck = nullptr; QComboBox *m_lazyModeCombo = nullptr;
     QCheckBox *m_cpuMoeCheck = nullptr;
+    QCheckBox *m_moeCacheMibCheck = nullptr; QSpinBox *m_moeCacheMibSpin = nullptr;
+    QCheckBox *m_ncpuFfnCheck = nullptr; QSpinBox *m_ncpuFfnSpin = nullptr;
 
     // ---- left: speculative decoding tab ----
     QCheckBox *m_specTypeCheck = nullptr;    QComboBox *m_specTypeCombo = nullptr;
@@ -93,6 +96,8 @@ private:
     QCheckBox *m_specNglCheck = nullptr;     QLineEdit *m_specNglEdit = nullptr;
     QCheckBox *m_specThreadsCheck = nullptr; QSpinBox *m_specThreadsSpin = nullptr;
     QCheckBox *m_specCpuMoeCheck = nullptr;
+    QCheckBox *m_specDraftNUbatchCheck = nullptr; QSpinBox *m_specDraftNUbatchSpin = nullptr;
+    QCheckBox *m_specDraftSamplingCheck = nullptr; QComboBox *m_specDraftSamplingCombo = nullptr;
     QCheckBox *m_specPSplitCheck = nullptr;  QDoubleSpinBox *m_specPSplitSpin = nullptr;
     QCheckBox *m_specPMinCheck = nullptr;    QDoubleSpinBox *m_specPMinSpin = nullptr;
     QCheckBox *m_ngModNMinCheck = nullptr;   QSpinBox *m_ngModNMinSpin = nullptr;

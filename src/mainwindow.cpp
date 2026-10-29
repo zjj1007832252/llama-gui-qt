@@ -83,6 +83,9 @@ constexpr int kCtxCheckpointsDefault = 32;
 // 投机解码相关默认值（取自 llama-server --help）
 constexpr int kSpecNMaxDefault = 3;
 constexpr int kSpecNMinDefault = 0;
+constexpr int kMoeCacheMibDefault = 0;     // 0 = 禁用
+constexpr int kNCpuFfnDefault = 0;         // 0 = 不分离
+constexpr int kSpecDraftNUbatchDefault = 0; // 0 = 跟随 -ub
 constexpr int kSpecDraftThreadsDefault = 0;   // 0 = 与 --threads 相同
 constexpr double kSpecPSplitDefault = 0.10;
 constexpr double kSpecPMinDefault = 0.00;
@@ -387,11 +390,13 @@ QWidget *MainWindow::createParamPanel()
 
     m_nglCheck = new QCheckBox(QStringLiteral("GPU卸载层数"));
     m_nglCheck->setChecked(true);
-    m_nglSpin = new QSpinBox;
-    m_nglSpin->setRange(0, 999);
-    m_nglSpin->setValue(99);
-    m_nglSpin->setFixedWidth(110);
-    addRow(grid, 3, m_nglCheck, m_nglSpin);
+    m_nglCombo = new QComboBox;
+    m_nglCombo->setEditable(true);
+    m_nglCombo->setInsertPolicy(QComboBox::NoInsert);
+    m_nglCombo->addItems({QStringLiteral("99"), QStringLiteral("999"),
+                          QStringLiteral("auto"), QStringLiteral("all")});
+    m_nglCombo->setFixedWidth(110);
+    addRow(grid, 3, m_nglCheck, m_nglCombo);
 
     m_loadModeCheck = new QCheckBox(QStringLiteral("加载模式"));
     m_loadModeCombo = new QComboBox;
@@ -401,22 +406,49 @@ QWidget *MainWindow::createParamPanel()
     m_loadModeCombo->setFixedWidth(200);
     addRow(grid, 4, m_loadModeCheck, m_loadModeCombo);
 
+    m_lazyModeCheck = new QCheckBox(QStringLiteral("惰性加载"));
+    m_lazyModeCheck->setToolTip(
+        QStringLiteral("-lzm/--lazy-mode，默认 auto；超过 4GiB 的大张量按需从磁盘读取（需 mmap）"));
+    m_lazyModeCombo = new QComboBox;
+    m_lazyModeCombo->addItems({QStringLiteral("auto"), QStringLiteral("on"),
+                               QStringLiteral("off")});
+    m_lazyModeCombo->setFixedWidth(200);
+    addRow(grid, 5, m_lazyModeCheck, m_lazyModeCombo);
+
     m_cpuMoeCheck = new QCheckBox(QStringLiteral("CPU MoE"));
-    addRow(grid, 5, m_cpuMoeCheck, nullptr);
+    addRow(grid, 6, m_cpuMoeCheck, nullptr);
+
+    m_moeCacheMibCheck = new QCheckBox(QStringLiteral("MoE显存缓存"));
+    m_moeCacheMibCheck->setToolTip(
+        QStringLiteral("--moe-cache-mib，默认 0 禁用；CPU MoE 模式下专家权重的 GPU 缓存（MiB）"));
+    m_moeCacheMibSpin = new QSpinBox;
+    m_moeCacheMibSpin->setRange(0, 65536);
+    m_moeCacheMibSpin->setValue(kMoeCacheMibDefault);
+    m_moeCacheMibSpin->setFixedWidth(110);
+    addRow(grid, 7, m_moeCacheMibCheck, m_moeCacheMibSpin);
+
+    m_ncpuFfnCheck = new QCheckBox(QStringLiteral("稠密FFN放CPU"));
+    m_ncpuFfnCheck->setToolTip(
+        QStringLiteral("-ncffn/--n-cpu-ffn，稠密模型前 N 层 FFN 权重放 CPU（MoE 模型请用 CPU MoE）"));
+    m_ncpuFfnSpin = new QSpinBox;
+    m_ncpuFfnSpin->setRange(0, 999);
+    m_ncpuFfnSpin->setValue(kNCpuFfnDefault);
+    m_ncpuFfnSpin->setFixedWidth(110);
+    addRow(grid, 8, m_ncpuFfnCheck, m_ncpuFfnSpin);
 
     m_reasoningCheck = new QCheckBox(QStringLiteral("Reasoning"));
     m_reasoningCombo = new QComboBox;
     m_reasoningCombo->addItems({QStringLiteral("on"), QStringLiteral("off"),
                                 QStringLiteral("auto")});
     m_reasoningCombo->setFixedWidth(200);
-    addRow(grid, 6, m_reasoningCheck, m_reasoningCombo);
+    addRow(grid, 9, m_reasoningCheck, m_reasoningCombo);
 
     m_splitCheck = new QCheckBox(QStringLiteral("多卡拆分模式"));
     m_splitCombo = new QComboBox;
     m_splitCombo->addItems({QStringLiteral("layer"), QStringLiteral("row"),
                             QStringLiteral("tensor"), QStringLiteral("none")});
     m_splitCombo->setFixedWidth(200);
-    addRow(grid, 7, m_splitCheck, m_splitCombo);
+    addRow(grid, 10, m_splitCheck, m_splitCombo);
 
     // 批大小 / 多卡分配 / 并发：默认值取自 server，勾选后才输出参数
     m_batchCheck = new QCheckBox(QStringLiteral("批大小"));
@@ -425,7 +457,7 @@ QWidget *MainWindow::createParamPanel()
     m_batchSpin->setRange(1, 1048576);
     m_batchSpin->setValue(kBatchDefault);
     m_batchSpin->setFixedWidth(110);
-    addRow(grid, 8, m_batchCheck, m_batchSpin);
+    addRow(grid, 11, m_batchCheck, m_batchSpin);
 
     m_ubatchCheck = new QCheckBox(QStringLiteral("物理批大小"));
     m_ubatchCheck->setToolTip(QStringLiteral("--ubatch-size，物理最大批大小，默认 %1").arg(kUbatchDefault));
@@ -433,14 +465,14 @@ QWidget *MainWindow::createParamPanel()
     m_ubatchSpin->setRange(1, 1048576);
     m_ubatchSpin->setValue(kUbatchDefault);
     m_ubatchSpin->setFixedWidth(110);
-    addRow(grid, 9, m_ubatchCheck, m_ubatchSpin);
+    addRow(grid, 12, m_ubatchCheck, m_ubatchSpin);
 
     m_tsCheck = new QCheckBox(QStringLiteral("多卡显存比例"));
     m_tsCheck->setToolTip(QStringLiteral("--tensor-split，按 GPU 顺序给出分配比例，如 3,1"));
     m_tsEdit = new QLineEdit;
     m_tsEdit->setPlaceholderText(QStringLiteral("如 3,1（按 GPU 顺序）"));
     m_tsEdit->setFixedWidth(200);
-    addRow(grid, 10, m_tsCheck, m_tsEdit);
+    addRow(grid, 13, m_tsCheck, m_tsEdit);
 
     m_mainGpuCheck = new QCheckBox(QStringLiteral("主GPU"));
     m_mainGpuCheck->setToolTip(
@@ -450,7 +482,7 @@ QWidget *MainWindow::createParamPanel()
     m_mainGpuSpin->setRange(0, 64);
     m_mainGpuSpin->setValue(kMainGpuDefault);
     m_mainGpuSpin->setFixedWidth(110);
-    addRow(grid, 11, m_mainGpuCheck, m_mainGpuSpin);
+    addRow(grid, 14, m_mainGpuCheck, m_mainGpuSpin);
 
     m_parallelCheck = new QCheckBox(QStringLiteral("并发槽位数"));
     m_parallelCheck->setToolTip(QStringLiteral("-np/--parallel，并发 slot 数，默认 %1（自动）")
@@ -459,7 +491,7 @@ QWidget *MainWindow::createParamPanel()
     m_parallelSpin->setRange(-1, 1024);
     m_parallelSpin->setValue(kParallelDefault);
     m_parallelSpin->setFixedWidth(110);
-    addRow(grid, 12, m_parallelCheck, m_parallelSpin);
+    addRow(grid, 15, m_parallelCheck, m_parallelSpin);
 
     grid->setColumnStretch(1, 1);
     grid->setRowStretch(13, 1);
@@ -642,6 +674,25 @@ QWidget *MainWindow::createParamPanel()
         QStringLiteral("-cmoed/--spec-draft-cpu-moe，草稿模型的 MoE 权重全部放 CPU"));
 
     addSpecGroups({{m_specThreadsCheck, m_specThreadsSpin}, {m_specCpuMoeCheck}});
+
+    m_specDraftNUbatchCheck = new QCheckBox(QStringLiteral("草稿批大小"));
+    m_specDraftNUbatchCheck->setToolTip(
+        QStringLiteral("--spec-draft-n-ubatch，默认 0 跟随 -ub；调小可节省草稿上下文 VRAM"));
+    m_specDraftNUbatchSpin = new QSpinBox;
+    m_specDraftNUbatchSpin->setRange(0, 4096);
+    m_specDraftNUbatchSpin->setValue(kSpecDraftNUbatchDefault);
+    m_specDraftNUbatchSpin->setFixedWidth(90);
+
+    m_specDraftSamplingCheck = new QCheckBox(QStringLiteral("草稿采样"));
+    m_specDraftSamplingCheck->setToolTip(
+        QStringLiteral("--spec-draft-sampling，默认 greedy；probabilistic 由目标模型拒绝采样校验"));
+    m_specDraftSamplingCombo = new QComboBox;
+    m_specDraftSamplingCombo->addItems({QStringLiteral("greedy"),
+                                        QStringLiteral("probabilistic")});
+    m_specDraftSamplingCombo->setFixedWidth(140);
+
+    addSpecGroups({{m_specDraftNUbatchCheck, m_specDraftNUbatchSpin},
+                   {m_specDraftSamplingCheck, m_specDraftSamplingCombo}});
 
     addSpecSection(QStringLiteral("强度微调"));
     m_specPSplitSpin = new QDoubleSpinBox;
@@ -1122,13 +1173,15 @@ void MainWindow::wireLogic()
 {
     auto regen = [this] { refreshAll(); };
     for (QCheckBox *cb : {m_ctxCheck, m_threadsCheck, m_flashCheck, m_nglCheck,
-                          m_loadModeCheck, m_cpuMoeCheck, m_reasoningCheck,
+                          m_loadModeCheck, m_lazyModeCheck,
+                          m_cpuMoeCheck, m_moeCacheMibCheck, m_ncpuFfnCheck, m_reasoningCheck,
                           m_splitCheck, m_cacheKCheck, m_cacheVCheck,
                           m_keepCheck, m_cacheRamCheck, m_ctxCpCheck, m_ctxShiftCheck,
                           m_kvuCheck,
                           m_specTypeCheck, m_specNMaxCheck, m_specNMinCheck,
                           m_specModelCheck, m_specNglCheck, m_specThreadsCheck,
-                          m_specCpuMoeCheck, m_specPSplitCheck, m_specPMinCheck,
+                          m_specCpuMoeCheck, m_specDraftNUbatchCheck, m_specDraftSamplingCheck,
+                          m_specPSplitCheck, m_specPMinCheck,
                           m_ngModNMinCheck, m_ngModNMaxCheck, m_ngModNMatchCheck,
                           m_ngSimpleNCheck, m_ngSimpleMCheck, m_ngSimpleHitsCheck,
                           m_ngMapKNCheck, m_ngMapKMCheck, m_ngMapKHitsCheck,
@@ -1144,11 +1197,13 @@ void MainWindow::wireLogic()
         refreshCtxInfo();
         refreshCmdInfo();
     });
-    for (QSpinBox *sb : {m_threadsSpin, m_nglSpin, m_batchSpin, m_ubatchSpin,
+    for (QSpinBox *sb : {m_threadsSpin, m_batchSpin, m_ubatchSpin,
+                         m_moeCacheMibSpin, m_ncpuFfnSpin,
                          m_mainGpuSpin, m_parallelSpin, m_topKSpin, m_seedSpin,
                          m_repLastNSpin,
                          m_timeoutSpin, m_thinkBudgetSpin, m_keepSpin, m_cacheRamSpin,
                          m_ctxCpSpin, m_specNMaxSpin, m_specNMinSpin, m_specThreadsSpin,
+                         m_specDraftNUbatchSpin,
                          m_ngModNMinSpin, m_ngModNMaxSpin, m_ngModNMatchSpin,
                          m_ngSimpleNSpin, m_ngSimpleMSpin, m_ngSimpleHitsSpin,
                          m_ngMapKNSpin, m_ngMapKMSpin, m_ngMapKHitsSpin})
@@ -1166,13 +1221,16 @@ void MainWindow::wireLogic()
         "QComboBox QAbstractItemView::item{min-height:20px;}"
         "QComboBox QAbstractItemView::item:hover{background:#1a7abf;color:#ffffff;}"
         "QComboBox QAbstractItemView::item:selected{background:#1a7abf;color:#ffffff;}");
-    for (QComboBox *cb : {m_flashCombo, m_loadModeCombo, m_reasoningCombo, m_splitCombo,
-                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo, m_specTypeCombo}) {
+    for (QComboBox *cb : {m_flashCombo, m_loadModeCombo, m_lazyModeCombo, m_reasoningCombo, m_splitCombo,
+                          m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo, m_specTypeCombo,
+                          m_specDraftSamplingCombo}) {
         connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, regen);
         cb->setStyleSheet(comboPopupStyle);
         cb->view()->setItemDelegate(new QStyledItemDelegate(cb->view()));
     }
     connect(m_tsEdit, &QLineEdit::textChanged, this, regen);
+    // 可编辑下拉框：手输数字或选择 auto/all 都要刷新
+    connect(m_nglCombo, &QComboBox::editTextChanged, this, regen);
     connect(m_logFileEdit, &QLineEdit::textChanged, this, regen);
     connect(m_specModelEdit, &QLineEdit::textChanged, this, regen);
     connect(m_specNglEdit, &QLineEdit::textChanged, this, regen);
@@ -1300,8 +1358,8 @@ QStringList MainWindow::buildServerArgs() const
     if (m_kvuCheck->isChecked())
         args << QStringLiteral("-kvu");
 
-    if (m_nglCheck->isChecked())
-        args << QStringLiteral("-ngl") << QString::number(m_nglSpin->value());
+    if (m_nglCheck->isChecked() && !m_nglCombo->currentText().trimmed().isEmpty())
+        args << QStringLiteral("-ngl") << m_nglCombo->currentText().trimmed();
     if (m_threadsCheck->isChecked())
         args << QStringLiteral("-t") << QString::number(m_threadsSpin->value());
     if (m_ctxCheck->isChecked())
@@ -1312,8 +1370,14 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("-sm") << m_splitCombo->currentText();
     if (m_loadModeCheck->isChecked())
         args << QStringLiteral("--load-mode") << m_loadModeCombo->currentText();
+    if (m_lazyModeCheck->isChecked() && m_lazyModeCombo->currentText() != QStringLiteral("auto"))
+        args << QStringLiteral("-lzm") << m_lazyModeCombo->currentText();
     if (m_cpuMoeCheck->isChecked())
         args << QStringLiteral("--cpu-moe");
+    if (m_moeCacheMibCheck->isChecked() && m_moeCacheMibSpin->value() != kMoeCacheMibDefault)
+        args << QStringLiteral("--moe-cache-mib") << QString::number(m_moeCacheMibSpin->value());
+    if (m_ncpuFfnCheck->isChecked() && m_ncpuFfnSpin->value() != kNCpuFfnDefault)
+        args << QStringLiteral("-ncffn") << QString::number(m_ncpuFfnSpin->value());
 
     // 三、投机解码
     if (m_specTypeCheck->isChecked())
@@ -1332,6 +1396,14 @@ QStringList MainWindow::buildServerArgs() const
              << QString::number(m_specThreadsSpin->value());
     if (m_specCpuMoeCheck->isChecked())
         args << QStringLiteral("--spec-draft-cpu-moe");
+    if (m_specDraftNUbatchCheck->isChecked() &&
+        m_specDraftNUbatchSpin->value() != kSpecDraftNUbatchDefault)
+        args << QStringLiteral("--spec-draft-n-ubatch")
+             << QString::number(m_specDraftNUbatchSpin->value());
+    if (m_specDraftSamplingCheck->isChecked() &&
+        m_specDraftSamplingCombo->currentText() != QStringLiteral("greedy"))
+        args << QStringLiteral("--spec-draft-sampling")
+             << m_specDraftSamplingCombo->currentText();
     if (m_specPSplitCheck->isChecked())
         args << QStringLiteral("--spec-draft-p-split") << fmtNum(m_specPSplitSpin->value());
     if (m_specPMinCheck->isChecked())
@@ -1490,6 +1562,17 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--spec-draft-cpu-moe\n");
         anySpec = true;
     }
+    if (m_specDraftNUbatchCheck->isChecked() &&
+        m_specDraftNUbatchSpin->value() != kSpecDraftNUbatchDefault) {
+        text += QStringLiteral("--spec-draft-n-ubatch %1\n").arg(m_specDraftNUbatchSpin->value());
+        anySpec = true;
+    }
+    if (m_specDraftSamplingCheck->isChecked() &&
+        m_specDraftSamplingCombo->currentText() != QStringLiteral("greedy")) {
+        text += QStringLiteral("--spec-draft-sampling %1\n")
+                    .arg(m_specDraftSamplingCombo->currentText());
+        anySpec = true;
+    }
     if (m_specPSplitCheck->isChecked()) {
         text += QStringLiteral("--spec-draft-p-split %1\n").arg(fmtNum(m_specPSplitSpin->value()));
         anySpec = true;
@@ -1543,8 +1626,8 @@ void MainWindow::refreshCmdInfo()
     text += QLatin1Char('\n');
 
     text += QStringLiteral("# 一、核心基础参数\n");
-    if (m_nglCheck->isChecked())
-        text += QStringLiteral("--n-gpu-layers %1\n").arg(m_nglSpin->value());
+    if (m_nglCheck->isChecked() && !m_nglCombo->currentText().trimmed().isEmpty())
+        text += QStringLiteral("--n-gpu-layers %1\n").arg(m_nglCombo->currentText().trimmed());
     if (m_threadsCheck->isChecked())
         text += QStringLiteral("--threads %1\n").arg(m_threadsSpin->value());
     if (m_ctxCheck->isChecked())
@@ -1555,8 +1638,14 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--split-mode %1\n").arg(m_splitCombo->currentText());
     if (m_loadModeCheck->isChecked())
         text += QStringLiteral("--load-mode %1\n").arg(m_loadModeCombo->currentText());
+    if (m_lazyModeCheck->isChecked() && m_lazyModeCombo->currentText() != QStringLiteral("auto"))
+        text += QStringLiteral("--lazy-mode %1\n").arg(m_lazyModeCombo->currentText());
     if (m_cpuMoeCheck->isChecked())
         text += QStringLiteral("--cpu-moe\n");
+    if (m_moeCacheMibCheck->isChecked() && m_moeCacheMibSpin->value() != kMoeCacheMibDefault)
+        text += QStringLiteral("--moe-cache-mib %1\n").arg(m_moeCacheMibSpin->value());
+    if (m_ncpuFfnCheck->isChecked() && m_ncpuFfnSpin->value() != kNCpuFfnDefault)
+        text += QStringLiteral("--n-cpu-ffn %1\n").arg(m_ncpuFfnSpin->value());
     if (m_reasoningCheck->isChecked())
         text += QStringLiteral("--reasoning %1\n").arg(m_reasoningCombo->currentText());
     if (m_batchCheck->isChecked())
@@ -1747,7 +1836,11 @@ void MainWindow::bestParams()
     const double freeGB = totalGB > 0 ? totalGB - usedGB : 0;
     const double overheadGB = 1.3; // KV 缓存与计算缓冲预留
 
-    int ngl = m_nglSpin->value();
+    // auto/all 不是数字，无法参与显存估算，按 99 起步重新计算
+    bool nglIsNum = false;
+    int ngl = m_nglCombo->currentText().trimmed().toInt(&nglIsNum);
+    if (!nglIsNum)
+        ngl = 99;
     if (modelGB > 0 && freeGB > 0) {
         if (modelGB + overheadGB <= freeGB)
             ngl = 999;
@@ -1757,7 +1850,7 @@ void MainWindow::bestParams()
     const int threads = QThread::idealThreadCount();
 
     m_nglCheck->setChecked(true);
-    m_nglSpin->setValue(ngl);
+    m_nglCombo->setCurrentText(QString::number(ngl));
     m_threadsCheck->setChecked(true);
     m_threadsSpin->setValue(threads);
     if (!m_flashCheck->isChecked()) {
@@ -1893,10 +1986,16 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("flashEnabled"), m_flashCheck->isChecked());
     o.insert(QStringLiteral("flashAttn"), m_flashCombo->currentText());
     o.insert(QStringLiteral("nglEnabled"), m_nglCheck->isChecked());
-    o.insert(QStringLiteral("ngl"), m_nglSpin->value());
+    o.insert(QStringLiteral("ngl"), m_nglCombo->currentText().trimmed());
     o.insert(QStringLiteral("loadModeEnabled"), m_loadModeCheck->isChecked());
     o.insert(QStringLiteral("loadMode"), m_loadModeCombo->currentText());
     o.insert(QStringLiteral("cpuMoe"), m_cpuMoeCheck->isChecked());
+    if (m_lazyModeCheck->isChecked() && m_lazyModeCombo->currentText() != QStringLiteral("auto"))
+        o.insert(QStringLiteral("lazyMode"), m_lazyModeCombo->currentText());
+    if (m_moeCacheMibCheck->isChecked() && m_moeCacheMibSpin->value() != kMoeCacheMibDefault)
+        o.insert(QStringLiteral("moeCacheMib"), m_moeCacheMibSpin->value());
+    if (m_ncpuFfnCheck->isChecked() && m_ncpuFfnSpin->value() != kNCpuFfnDefault)
+        o.insert(QStringLiteral("nCpuFfn"), m_ncpuFfnSpin->value());
     o.insert(QStringLiteral("specEnabled"), m_specTypeCheck->isChecked());
     o.insert(QStringLiteral("specDraftNMax"), m_specNMaxSpin->value());
     // 投机解码：仅保存非默认取值
@@ -1914,6 +2013,12 @@ void MainWindow::saveParams()
         o.insert(QStringLiteral("specThreads"), m_specThreadsSpin->value());
     if (m_specCpuMoeCheck->isChecked())
         o.insert(QStringLiteral("specCpuMoe"), true);
+    if (m_specDraftNUbatchCheck->isChecked() &&
+        m_specDraftNUbatchSpin->value() != kSpecDraftNUbatchDefault)
+        o.insert(QStringLiteral("specDraftNUbatch"), m_specDraftNUbatchSpin->value());
+    if (m_specDraftSamplingCheck->isChecked() &&
+        m_specDraftSamplingCombo->currentText() != QStringLiteral("greedy"))
+        o.insert(QStringLiteral("specDraftSampling"), m_specDraftSamplingCombo->currentText());
     if (m_specPSplitCheck->isChecked() && !qFuzzyCompare(m_specPSplitSpin->value(), kSpecPSplitDefault))
         o.insert(QStringLiteral("specPSplit"), m_specPSplitSpin->value());
     if (m_specPMinCheck->isChecked() && !qFuzzyCompare(m_specPMinSpin->value(), kSpecPMinDefault))
@@ -2045,10 +2150,22 @@ void MainWindow::loadParams()
     m_flashCheck->setChecked(o.value(QStringLiteral("flashEnabled")).toBool());
     m_flashCombo->setCurrentText(o.value(QStringLiteral("flashAttn")).toString(QStringLiteral("on")));
     m_nglCheck->setChecked(o.value(QStringLiteral("nglEnabled")).toBool(true));
-    m_nglSpin->setValue(o.value(QStringLiteral("ngl")).toInt(99));
+    // 兼容旧配置：ngl 曾存为数字，现支持 auto/all 字符串
+    QString nglText = o.value(QStringLiteral("ngl")).toVariant().toString().trimmed();
+    if (nglText.isEmpty())
+        nglText = QStringLiteral("99");
+    m_nglCombo->setCurrentText(nglText);
     m_loadModeCheck->setChecked(o.value(QStringLiteral("loadModeEnabled")).toBool());
     m_loadModeCombo->setCurrentText(o.value(QStringLiteral("loadMode")).toString(QStringLiteral("auto")));
     m_cpuMoeCheck->setChecked(o.value(QStringLiteral("cpuMoe")).toBool());
+    m_lazyModeCheck->setChecked(o.contains(QStringLiteral("lazyMode")));
+    m_lazyModeCombo->setCurrentText(
+        o.value(QStringLiteral("lazyMode")).toString(QStringLiteral("auto")));
+    m_moeCacheMibCheck->setChecked(o.contains(QStringLiteral("moeCacheMib")));
+    m_moeCacheMibSpin->setValue(
+        o.value(QStringLiteral("moeCacheMib")).toInt(kMoeCacheMibDefault));
+    m_ncpuFfnCheck->setChecked(o.contains(QStringLiteral("nCpuFfn")));
+    m_ncpuFfnSpin->setValue(o.value(QStringLiteral("nCpuFfn")).toInt(kNCpuFfnDefault));
     // 投机解码：兼容旧配置的 specEnabled/specDraftNMax（旧版固定 draft-mtp）
     const bool legacySpec = o.value(QStringLiteral("specEnabled")).toBool(false);
     m_specTypeCheck->setChecked(legacySpec || o.contains(QStringLiteral("specType")));
@@ -2066,6 +2183,12 @@ void MainWindow::loadParams()
     m_specThreadsCheck->setChecked(o.contains(QStringLiteral("specThreads")));
     m_specThreadsSpin->setValue(o.value(QStringLiteral("specThreads")).toInt(12));
     m_specCpuMoeCheck->setChecked(o.value(QStringLiteral("specCpuMoe")).toBool(false));
+    m_specDraftNUbatchCheck->setChecked(o.contains(QStringLiteral("specDraftNUbatch")));
+    m_specDraftNUbatchSpin->setValue(
+        o.value(QStringLiteral("specDraftNUbatch")).toInt(kSpecDraftNUbatchDefault));
+    m_specDraftSamplingCheck->setChecked(o.contains(QStringLiteral("specDraftSampling")));
+    m_specDraftSamplingCombo->setCurrentText(
+        o.value(QStringLiteral("specDraftSampling")).toString(QStringLiteral("greedy")));
     m_specPSplitCheck->setChecked(o.contains(QStringLiteral("specPSplit")));
     m_specPSplitSpin->setValue(o.value(QStringLiteral("specPSplit")).toDouble(kSpecPSplitDefault));
     m_specPMinCheck->setChecked(o.contains(QStringLiteral("specPMin")));
@@ -2196,6 +2319,8 @@ void MainWindow::parseArgsText()
             {QStringLiteral("n-gpu-layers"), QStringLiteral("ngl")},
             {QStringLiteral("split-mode"), QStringLiteral("sm")},
             {QStringLiteral("load-mode"), QStringLiteral("lm")},
+            {QStringLiteral("lazy-mode"), QStringLiteral("lzm")},
+            {QStringLiteral("n-cpu-ffn"), QStringLiteral("ncffn")},
             {QStringLiteral("cache-type-k"), QStringLiteral("ctk")},
             {QStringLiteral("cache-type-v"), QStringLiteral("ctv")},
             {QStringLiteral("alias"), QStringLiteral("a")},
@@ -2259,9 +2384,21 @@ void MainWindow::parseArgsText()
         m_loadModeCheck->setChecked(true);
         m_loadModeCombo->setCurrentText(opt[QStringLiteral("lm")]);
     }
+    if (opt.contains(QStringLiteral("lzm"))) {
+        m_lazyModeCheck->setChecked(true);
+        m_lazyModeCombo->setCurrentText(opt[QStringLiteral("lzm")]);
+    }
+    if (opt.contains(QStringLiteral("moe-cache-mib"))) {
+        m_moeCacheMibCheck->setChecked(true);
+        m_moeCacheMibSpin->setValue(opt[QStringLiteral("moe-cache-mib")].toInt());
+    }
+    if (opt.contains(QStringLiteral("ncffn"))) {
+        m_ncpuFfnCheck->setChecked(true);
+        m_ncpuFfnSpin->setValue(opt[QStringLiteral("ncffn")].toInt());
+    }
     if (opt.contains(QStringLiteral("ngl"))) {
         m_nglCheck->setChecked(true);
-        m_nglSpin->setValue(opt[QStringLiteral("ngl")].toInt());
+        m_nglCombo->setCurrentText(opt[QStringLiteral("ngl")].trimmed());
     }
     if (opt.contains(QStringLiteral("sm"))) {
         m_splitCheck->setChecked(true);
@@ -2328,6 +2465,16 @@ void MainWindow::parseArgsText()
     if (flags.contains(QLatin1String("spec-draft-cpu-moe")) ||
         flags.contains(QLatin1String("cmoed")))
         m_specCpuMoeCheck->setChecked(true);
+    if (opt.contains(QStringLiteral("spec-draft-n-ubatch"))) {
+        m_specDraftNUbatchCheck->setChecked(true);
+        m_specDraftNUbatchSpin->setValue(
+            opt[QStringLiteral("spec-draft-n-ubatch")].toInt());
+    }
+    if (opt.contains(QStringLiteral("spec-draft-sampling"))) {
+        m_specDraftSamplingCheck->setChecked(true);
+        m_specDraftSamplingCombo->setCurrentText(
+            opt[QStringLiteral("spec-draft-sampling")]);
+    }
     if (opt.contains(QStringLiteral("spec-draft-p-split"))) {
         m_specPSplitCheck->setChecked(true);
         m_specPSplitSpin->setValue(opt[QStringLiteral("spec-draft-p-split")].toDouble());
