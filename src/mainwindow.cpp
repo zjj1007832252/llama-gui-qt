@@ -425,8 +425,16 @@ QWidget *MainWindow::createParamPanel()
     m_lazyModeCombo->setFixedWidth(200);
     addRow(grid, 5, m_lazyModeCheck, m_lazyModeCombo);
 
+    m_fitCheck = new QCheckBox(QStringLiteral("显存自适应"));
+    m_fitCheck->setToolTip(
+        QStringLiteral("-fit/--fit [on|off]，默认 on；server 自动调整未设置的参数以适配显存"));
+    m_fitCombo = new QComboBox;
+    m_fitCombo->addItems({QStringLiteral("on"), QStringLiteral("off")});
+    m_fitCombo->setFixedWidth(200);
+    addRow(grid, 6, m_fitCheck, m_fitCombo);
+
     m_cpuMoeCheck = new QCheckBox(QStringLiteral("CPU MoE"));
-    addRow(grid, 6, m_cpuMoeCheck, nullptr);
+    addRow(grid, 7, m_cpuMoeCheck, nullptr);
 
     m_moeCacheMibCheck = new QCheckBox(QStringLiteral("MoE显存缓存"));
     m_moeCacheMibCheck->setToolTip(
@@ -435,7 +443,7 @@ QWidget *MainWindow::createParamPanel()
     m_moeCacheMibSpin->setRange(0, 65536);
     m_moeCacheMibSpin->setValue(kMoeCacheMibDefault);
     m_moeCacheMibSpin->setFixedWidth(110);
-    addRow(grid, 7, m_moeCacheMibCheck, m_moeCacheMibSpin);
+    addRow(grid, 8, m_moeCacheMibCheck, m_moeCacheMibSpin);
 
     m_ncpuFfnCheck = new QCheckBox(QStringLiteral("稠密FFN放CPU"));
     m_ncpuFfnCheck->setToolTip(
@@ -444,7 +452,7 @@ QWidget *MainWindow::createParamPanel()
     m_ncpuFfnSpin->setRange(0, 999);
     m_ncpuFfnSpin->setValue(kNCpuFfnDefault);
     m_ncpuFfnSpin->setFixedWidth(110);
-    addRow(grid, 9, m_ncpuFfnCheck, m_ncpuFfnSpin);
+    addRow(grid, 10, m_ncpuFfnCheck, m_ncpuFfnSpin);
 
     m_ncpuMoeCheck = new QCheckBox(QStringLiteral("MoE部分放CPU"));
     m_ncpuMoeCheck->setToolTip(
@@ -454,12 +462,12 @@ QWidget *MainWindow::createParamPanel()
     m_ncpuMoeSpin->setRange(0, 999);
     m_ncpuMoeSpin->setValue(kNCpuMoeDefault);
     m_ncpuMoeSpin->setFixedWidth(110);
-    addRow(grid, 8, m_ncpuMoeCheck, m_ncpuMoeSpin);
+    addRow(grid, 9, m_ncpuMoeCheck, m_ncpuMoeSpin);
 
     m_mmprojOffloadCheck = new QCheckBox(QStringLiteral("投影器不上GPU"));
     m_mmprojOffloadCheck->setToolTip(
         QStringLiteral("--no-mmproj-offload，默认投影器随模型上 GPU；显存紧张时可关"));
-    addRow(grid, 10, m_mmprojOffloadCheck, nullptr);
+    addRow(grid, 11, m_mmprojOffloadCheck, nullptr);
 
     m_imageMinTokensCheck = new QCheckBox(QStringLiteral("图像token下限"));
     m_imageMinTokensCheck->setToolTip(
@@ -468,7 +476,7 @@ QWidget *MainWindow::createParamPanel()
     m_imageMinTokensSpin->setRange(0, 65536);
     m_imageMinTokensSpin->setValue(0);
     m_imageMinTokensSpin->setFixedWidth(110);
-    addRow(grid, 11, m_imageMinTokensCheck, m_imageMinTokensSpin);
+    addRow(grid, 12, m_imageMinTokensCheck, m_imageMinTokensSpin);
 
     m_imageMaxTokensCheck = new QCheckBox(QStringLiteral("图像token上限"));
     m_imageMaxTokensCheck->setToolTip(
@@ -477,7 +485,7 @@ QWidget *MainWindow::createParamPanel()
     m_imageMaxTokensSpin->setRange(0, 65536);
     m_imageMaxTokensSpin->setValue(0);
     m_imageMaxTokensSpin->setFixedWidth(110);
-    addRow(grid, 12, m_imageMaxTokensCheck, m_imageMaxTokensSpin);
+    addRow(grid, 13, m_imageMaxTokensCheck, m_imageMaxTokensSpin);
 
     m_mtmdBatchCheck = new QCheckBox(QStringLiteral("图像批token"));
     m_mtmdBatchCheck->setToolTip(
@@ -487,21 +495,21 @@ QWidget *MainWindow::createParamPanel()
     m_mtmdBatchSpin->setRange(0, 65536);
     m_mtmdBatchSpin->setValue(kMtmdBatchMaxTokensDefault);
     m_mtmdBatchSpin->setFixedWidth(110);
-    addRow(grid, 13, m_mtmdBatchCheck, m_mtmdBatchSpin);
+    addRow(grid, 14, m_mtmdBatchCheck, m_mtmdBatchSpin);
 
     m_reasoningCheck = new QCheckBox(QStringLiteral("Reasoning"));
     m_reasoningCombo = new QComboBox;
     m_reasoningCombo->addItems({QStringLiteral("on"), QStringLiteral("off"),
                                 QStringLiteral("auto")});
     m_reasoningCombo->setFixedWidth(200);
-    addRow(grid, 14, m_reasoningCheck, m_reasoningCombo);
+    addRow(grid, 15, m_reasoningCheck, m_reasoningCombo);
 
     m_splitCheck = new QCheckBox(QStringLiteral("多卡拆分模式"));
     m_splitCombo = new QComboBox;
     m_splitCombo->addItems({QStringLiteral("layer"), QStringLiteral("row"),
                             QStringLiteral("tensor"), QStringLiteral("none")});
     m_splitCombo->setFixedWidth(200);
-    addRow(grid, 15, m_splitCheck, m_splitCombo);
+    addRow(grid, 16, m_splitCheck, m_splitCombo);
 
     // 批大小 / 多卡分配 / 并发：默认值取自 server，勾选后才输出参数
     m_batchCheck = new QCheckBox(QStringLiteral("批大小"));
@@ -510,7 +518,7 @@ QWidget *MainWindow::createParamPanel()
     m_batchSpin->setRange(1, 1048576);
     m_batchSpin->setValue(kBatchDefault);
     m_batchSpin->setFixedWidth(110);
-    addRow(grid, 16, m_batchCheck, m_batchSpin);
+    addRow(grid, 17, m_batchCheck, m_batchSpin);
 
     m_ubatchCheck = new QCheckBox(QStringLiteral("物理批大小"));
     m_ubatchCheck->setToolTip(QStringLiteral("--ubatch-size，物理最大批大小，默认 %1").arg(kUbatchDefault));
@@ -518,14 +526,14 @@ QWidget *MainWindow::createParamPanel()
     m_ubatchSpin->setRange(1, 1048576);
     m_ubatchSpin->setValue(kUbatchDefault);
     m_ubatchSpin->setFixedWidth(110);
-    addRow(grid, 17, m_ubatchCheck, m_ubatchSpin);
+    addRow(grid, 18, m_ubatchCheck, m_ubatchSpin);
 
     m_tsCheck = new QCheckBox(QStringLiteral("多卡显存比例"));
     m_tsCheck->setToolTip(QStringLiteral("--tensor-split，按 GPU 顺序给出分配比例，如 3,1"));
     m_tsEdit = new QLineEdit;
     m_tsEdit->setPlaceholderText(QStringLiteral("如 3,1（按 GPU 顺序）"));
     m_tsEdit->setFixedWidth(200);
-    addRow(grid, 18, m_tsCheck, m_tsEdit);
+    addRow(grid, 19, m_tsCheck, m_tsEdit);
 
     m_mainGpuCheck = new QCheckBox(QStringLiteral("主GPU"));
     m_mainGpuCheck->setToolTip(
@@ -535,7 +543,7 @@ QWidget *MainWindow::createParamPanel()
     m_mainGpuSpin->setRange(0, 64);
     m_mainGpuSpin->setValue(kMainGpuDefault);
     m_mainGpuSpin->setFixedWidth(110);
-    addRow(grid, 19, m_mainGpuCheck, m_mainGpuSpin);
+    addRow(grid, 20, m_mainGpuCheck, m_mainGpuSpin);
 
     m_parallelCheck = new QCheckBox(QStringLiteral("并发槽位数"));
     m_parallelCheck->setToolTip(QStringLiteral("-np/--parallel，并发 slot 数，默认 %1（自动）")
@@ -544,10 +552,10 @@ QWidget *MainWindow::createParamPanel()
     m_parallelSpin->setRange(-1, 1024);
     m_parallelSpin->setValue(kParallelDefault);
     m_parallelSpin->setFixedWidth(110);
-    addRow(grid, 20, m_parallelCheck, m_parallelSpin);
+    addRow(grid, 21, m_parallelCheck, m_parallelSpin);
 
     grid->setColumnStretch(1, 1);
-    grid->setRowStretch(21, 1);
+    grid->setRowStretch(22, 1);
 
     addParamTab(body, QStringLiteral("1、核心基础"),
                 QStringLiteral("一、核心基础参数：上下文、线程、Flash Attn、卸载层数、"
@@ -1341,7 +1349,7 @@ void MainWindow::wireLogic()
 {
     auto regen = [this] { refreshAll(); };
     for (QCheckBox *cb : {m_ctxCheck, m_threadsCheck, m_flashCheck, m_nglCheck,
-                          m_loadModeCheck, m_lazyModeCheck,
+                          m_loadModeCheck, m_lazyModeCheck, m_fitCheck,
                           m_cpuMoeCheck, m_moeCacheMibCheck, m_ncpuFfnCheck, m_reasoningCheck,
                           m_ncpuMoeCheck, m_mmprojOffloadCheck,
                           m_imageMinTokensCheck, m_imageMaxTokensCheck, m_mtmdBatchCheck,
@@ -1399,7 +1407,7 @@ void MainWindow::wireLogic()
         "QComboBox QAbstractItemView::item{min-height:20px;}"
         "QComboBox QAbstractItemView::item:hover{background:#1a7abf;color:#ffffff;}"
         "QComboBox QAbstractItemView::item:selected{background:#1a7abf;color:#ffffff;}");
-    for (QComboBox *cb : {m_flashCombo, m_loadModeCombo, m_lazyModeCombo, m_reasoningCombo, m_splitCombo,
+    for (QComboBox *cb : {m_flashCombo, m_loadModeCombo, m_lazyModeCombo, m_fitCombo, m_reasoningCombo, m_splitCombo,
                           m_cacheKCombo, m_cacheVCombo, m_chatTmplCombo, m_specTypeCombo,
                           m_specDraftSamplingCombo, m_specDraftTypeKCombo, m_specDraftTypeVCombo}) {
         connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, regen);
@@ -1552,6 +1560,8 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("--load-mode") << m_loadModeCombo->currentText();
     if (m_lazyModeCheck->isChecked() && m_lazyModeCombo->currentText() != QStringLiteral("auto"))
         args << QStringLiteral("-lzm") << m_lazyModeCombo->currentText();
+    if (m_fitCheck->isChecked() && m_fitCombo->currentText() != QStringLiteral("on"))
+        args << QStringLiteral("--fit") << m_fitCombo->currentText();
     if (m_cpuMoeCheck->isChecked())
         args << QStringLiteral("--cpu-moe");
     if (m_moeCacheMibCheck->isChecked() && m_moeCacheMibSpin->value() != kMoeCacheMibDefault)
@@ -1872,6 +1882,8 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--load-mode %1\n").arg(m_loadModeCombo->currentText());
     if (m_lazyModeCheck->isChecked() && m_lazyModeCombo->currentText() != QStringLiteral("auto"))
         text += QStringLiteral("--lazy-mode %1\n").arg(m_lazyModeCombo->currentText());
+    if (m_fitCheck->isChecked() && m_fitCombo->currentText() != QStringLiteral("on"))
+        text += QStringLiteral("--fit %1\n").arg(m_fitCombo->currentText());
     if (m_cpuMoeCheck->isChecked())
         text += QStringLiteral("--cpu-moe\n");
     if (m_moeCacheMibCheck->isChecked() && m_moeCacheMibSpin->value() != kMoeCacheMibDefault)
@@ -2089,8 +2101,9 @@ void MainWindow::browseSpecDraftModel()
 
 void MainWindow::bestParams()
 {
-    // 显存探测
-    double totalGB = 0, usedGB = 0;
+    // 显存探测：逐卡统计，多卡求和
+    struct GpuMem { double total, used; };
+    QList<GpuMem> gpus;
     QProcess nvidia;
     nvidia.start(QStringLiteral("nvidia-smi"),
                  {QStringLiteral("--query-gpu=memory.total,memory.used"),
@@ -2098,51 +2111,93 @@ void MainWindow::bestParams()
     if (nvidia.waitForFinished(4000)) {
         const QString out = QString::fromLocal8Bit(nvidia.readAllStandardOutput());
         const QRegularExpression rx(QStringLiteral("(\\d+)\\s*,\\s*(\\d+)"));
-        const QRegularExpressionMatch m = rx.match(out);
-        if (m.hasMatch()) {
-            totalGB = m.captured(1).toDouble() / 1024.0;
-            usedGB = m.captured(2).toDouble() / 1024.0;
+        QRegularExpressionMatchIterator it = rx.globalMatch(out);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            gpus.append({m.captured(1).toDouble() / 1024.0,
+                         m.captured(2).toDouble() / 1024.0});
         }
+    }
+    double totalGB = 0, usedGB = 0;
+    for (const GpuMem &g : gpus) {
+        totalGB += g.total;
+        usedGB += g.used;
     }
 
     const QString model = modelFilePath();
     const double modelGB = QFileInfo::exists(model) ? QFileInfo(model).size() / 1073741824.0 : 0;
-    const double freeGB = totalGB > 0 ? totalGB - usedGB : 0;
+    const double freeGB = totalGB - usedGB;
     const double overheadGB = 1.3; // KV 缓存与计算缓冲预留
 
-    // auto/all 不是数字，无法参与显存估算，按 99 起步重新计算
-    bool nglIsNum = false;
-    int ngl = m_nglCombo->currentText().trimmed().toInt(&nglIsNum);
-    if (!nglIsNum)
-        ngl = 99;
-    if (modelGB > 0 && freeGB > 0) {
-        if (modelGB + overheadGB <= freeGB)
-            ngl = 999;
-        else
-            ngl = qBound(0, int(99.0 * (freeGB - overheadGB) / modelGB), 99);
-    }
     const int threads = QThread::idealThreadCount();
-
-    m_nglCheck->setChecked(true);
-    m_nglCombo->setCurrentText(QString::number(ngl));
     m_threadsCheck->setChecked(true);
     m_threadsSpin->setValue(threads);
     if (!m_flashCheck->isChecked()) {
         m_flashCheck->setChecked(true);
         m_flashCombo->setCurrentText(QStringLiteral("on"));
     }
-    // 显存放不下整个模型时建议开启 CPU MoE：注意力等稠密部分留在 GPU，MoE 专家权重放 CPU
-    m_cpuMoeCheck->setChecked(ngl < 999);
+
+    QString logMsg;
+    if (gpus.isEmpty()) {
+        logMsg = QStringLiteral(
+            "[GUI] 未检测到 nvidia-smi 或 GPU 信息（非 NVIDIA 显卡或驱动未安装？），"
+            "跳过显存估算，仅设置 -t %1 与 Flash Attn。"
+            "\n[GUI] 提示：可不勾选 GPU 卸载层数，server 的 --fit（默认 on）会自动适配显存。");
+        m_runLog->appendPlainText(logMsg.arg(threads));
+        refreshAll();
+        return;
+    }
+
+    QString gpuDetail;
+    for (int i = 0; i < gpus.size(); ++i) {
+        gpuDetail += QStringLiteral("\n[GUI]   GPU%1: 总 %2GB / 已用 %3GB / 可用 %4GB")
+                         .arg(i)
+                         .arg(gpus[i].total, 0, 'f', 1, QLatin1Char('0'))
+                         .arg(gpus[i].used, 0, 'f', 1, QLatin1Char('0'))
+                         .arg(gpus[i].total - gpus[i].used, 0, 'f', 1, QLatin1Char('0'));
+    }
+
+    if (modelGB <= 0) {
+        logMsg = QStringLiteral(
+            "[GUI] 已生成最优启动参数: GPU 总显存 %1GB / 可用 %2GB, 未选择模型文件，"
+            "跳过层数估算。\n[GUI] 提示：可不勾选 GPU 卸载层数，server 的 --fit（默认 on）"
+            "会自动适配显存。");
+        m_runLog->appendPlainText(logMsg.arg(totalGB, 0, 'f', 1, QLatin1Char('0'))
+                                      .arg(freeGB, 0, 'f', 1, QLatin1Char('0')));
+        refreshAll();
+        return;
+    }
+
+    bool fits = false;
+    QString nglText;
+    if (modelGB + overheadGB <= freeGB) {
+        fits = true;
+        nglText = QStringLiteral("all");
+    } else {
+        const int ngl = qBound(0, int(99.0 * (freeGB - overheadGB) / modelGB), 99);
+        nglText = QString::number(ngl);
+    }
+
+    m_nglCheck->setChecked(true);
+    m_nglCombo->setCurrentText(nglText);
+    // 放不下时建议开启 CPU MoE（注意力等稠密部分留在 GPU）；已勾选的不强制取消
+    if (!fits && !m_cpuMoeCheck->isChecked())
+        m_cpuMoeCheck->setChecked(true);
     refreshAll();
 
-    m_runLog->appendPlainText(QStringLiteral(
-        "[GUI] 已生成最优启动参数: GPU 总显存 %1GB / 可用 %2GB, 模型 %3GB → "
-        "-ngl %4, -t %5, -fa on%6")
-        .arg(totalGB, 0, 'f', 1, QLatin1Char('0'))
-        .arg(freeGB, 0, 'f', 1, QLatin1Char('0'))
-        .arg(modelGB, 0, 'f', 2, QLatin1Char('0'))
-        .arg(ngl).arg(threads)
-        .arg(ngl < 999 ? QStringLiteral(", --cpu-moe(显存不足,建议MoE权重放CPU)") : QString()));
+    logMsg = QStringLiteral(
+                 "[GUI] 已生成最优启动参数: GPU 总显存 %1GB / 可用 %2GB, 模型 %3GB → "
+                 "-ngl %4, -t %5, -fa on%6%7")
+                 .arg(totalGB, 0, 'f', 1, QLatin1Char('0'))
+                 .arg(freeGB, 0, 'f', 1, QLatin1Char('0'))
+                 .arg(modelGB, 0, 'f', 2, QLatin1Char('0'))
+                 .arg(nglText, threads)
+                 .arg(!fits ? QStringLiteral(", --cpu-moe(显存不足,建议MoE权重放CPU)")
+                            : QString())
+                 .arg(fits ? QString()
+                           : QStringLiteral("\n[GUI] 提示：也可以不勾选 GPU 卸载层数，"
+                                            "由 server 的 --fit（默认 on）自动适配显存"));
+    m_runLog->appendPlainText(logMsg + gpuDetail);
 }
 
 // ---------------------------------------------------------------- script / chat
@@ -2268,6 +2323,8 @@ void MainWindow::saveParams()
     o.insert(QStringLiteral("cpuMoe"), m_cpuMoeCheck->isChecked());
     if (m_lazyModeCheck->isChecked() && m_lazyModeCombo->currentText() != QStringLiteral("auto"))
         o.insert(QStringLiteral("lazyMode"), m_lazyModeCombo->currentText());
+    if (m_fitCheck->isChecked() && m_fitCombo->currentText() != QStringLiteral("on"))
+        o.insert(QStringLiteral("fit"), m_fitCombo->currentText());
     if (m_moeCacheMibCheck->isChecked() && m_moeCacheMibSpin->value() != kMoeCacheMibDefault)
         o.insert(QStringLiteral("moeCacheMib"), m_moeCacheMibSpin->value());
     if (m_ncpuFfnCheck->isChecked() && m_ncpuFfnSpin->value() != kNCpuFfnDefault)
@@ -2481,6 +2538,8 @@ void MainWindow::loadParams()
     m_lazyModeCheck->setChecked(o.contains(QStringLiteral("lazyMode")));
     m_lazyModeCombo->setCurrentText(
         o.value(QStringLiteral("lazyMode")).toString(QStringLiteral("auto")));
+    m_fitCheck->setChecked(o.contains(QStringLiteral("fit")));
+    m_fitCombo->setCurrentText(o.value(QStringLiteral("fit")).toString(QStringLiteral("on")));
     m_moeCacheMibCheck->setChecked(o.contains(QStringLiteral("moeCacheMib")));
     m_moeCacheMibSpin->setValue(
         o.value(QStringLiteral("moeCacheMib")).toInt(kMoeCacheMibDefault));
@@ -2745,6 +2804,10 @@ void MainWindow::parseArgsText()
     if (opt.contains(QStringLiteral("lzm"))) {
         m_lazyModeCheck->setChecked(true);
         m_lazyModeCombo->setCurrentText(opt[QStringLiteral("lzm")]);
+    }
+    if (opt.contains(QStringLiteral("fit"))) {
+        m_fitCheck->setChecked(true);
+        m_fitCombo->setCurrentText(opt[QStringLiteral("fit")]);
     }
     if (opt.contains(QStringLiteral("moe-cache-mib"))) {
         m_moeCacheMibCheck->setChecked(true);

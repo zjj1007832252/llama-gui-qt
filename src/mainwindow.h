@@ -84,6 +84,7 @@ private:
     QCheckBox *m_nglCheck = nullptr;    QComboBox *m_nglCombo = nullptr;
     QCheckBox *m_loadModeCheck = nullptr; QComboBox *m_loadModeCombo = nullptr;
     QCheckBox *m_lazyModeCheck = nullptr; QComboBox *m_lazyModeCombo = nullptr;
+    QCheckBox *m_fitCheck = nullptr; QComboBox *m_fitCombo = nullptr;
     QCheckBox *m_cpuMoeCheck = nullptr;
     QCheckBox *m_moeCacheMibCheck = nullptr; QSpinBox *m_moeCacheMibSpin = nullptr;
     QCheckBox *m_ncpuFfnCheck = nullptr; QSpinBox *m_ncpuFfnSpin = nullptr;
