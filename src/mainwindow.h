@@ -87,6 +87,11 @@ private:
     QCheckBox *m_cpuMoeCheck = nullptr;
     QCheckBox *m_moeCacheMibCheck = nullptr; QSpinBox *m_moeCacheMibSpin = nullptr;
     QCheckBox *m_ncpuFfnCheck = nullptr; QSpinBox *m_ncpuFfnSpin = nullptr;
+    QCheckBox *m_ncpuMoeCheck = nullptr; QSpinBox *m_ncpuMoeSpin = nullptr;
+    QCheckBox *m_mmprojOffloadCheck = nullptr;
+    QCheckBox *m_imageMinTokensCheck = nullptr; QSpinBox *m_imageMinTokensSpin = nullptr;
+    QCheckBox *m_imageMaxTokensCheck = nullptr; QSpinBox *m_imageMaxTokensSpin = nullptr;
+    QCheckBox *m_mtmdBatchCheck = nullptr; QSpinBox *m_mtmdBatchSpin = nullptr;
 
     // ---- left: speculative decoding tab ----
     QCheckBox *m_specTypeCheck = nullptr;    QComboBox *m_specTypeCombo = nullptr;
@@ -98,6 +103,9 @@ private:
     QCheckBox *m_specCpuMoeCheck = nullptr;
     QCheckBox *m_specDraftNUbatchCheck = nullptr; QSpinBox *m_specDraftNUbatchSpin = nullptr;
     QCheckBox *m_specDraftSamplingCheck = nullptr; QComboBox *m_specDraftSamplingCombo = nullptr;
+    QCheckBox *m_specDraftTypeKCheck = nullptr; QComboBox *m_specDraftTypeKCombo = nullptr;
+    QCheckBox *m_specDraftTypeVCheck = nullptr; QComboBox *m_specDraftTypeVCombo = nullptr;
+    QCheckBox *m_specDraftNCmoeCheck = nullptr; QSpinBox *m_specDraftNCmoeSpin = nullptr;
     QCheckBox *m_specPSplitCheck = nullptr;  QDoubleSpinBox *m_specPSplitSpin = nullptr;
     QCheckBox *m_specPMinCheck = nullptr;    QDoubleSpinBox *m_specPMinSpin = nullptr;
     QCheckBox *m_ngModNMinCheck = nullptr;   QSpinBox *m_ngModNMinSpin = nullptr;
@@ -128,6 +136,14 @@ private:
     QCheckBox *m_freqPenCheck = nullptr;  QDoubleSpinBox *m_freqPenSpin = nullptr;
     QCheckBox *m_repLastNCheck = nullptr; QSpinBox *m_repLastNSpin = nullptr;
     QCheckBox *m_seedCheck = nullptr;     QSpinBox *m_seedSpin = nullptr;
+    QCheckBox *m_topNSigmaCheck = nullptr; QDoubleSpinBox *m_topNSigmaSpin = nullptr;
+    QCheckBox *m_xtcProbCheck = nullptr;  QDoubleSpinBox *m_xtcProbSpin = nullptr;
+    QCheckBox *m_xtcThrCheck = nullptr;   QDoubleSpinBox *m_xtcThrSpin = nullptr;
+    QCheckBox *m_typicalCheck = nullptr;  QDoubleSpinBox *m_typicalSpin = nullptr;
+    QCheckBox *m_dryMultCheck = nullptr;  QDoubleSpinBox *m_dryMultSpin = nullptr;
+    QCheckBox *m_dryBaseCheck = nullptr;  QDoubleSpinBox *m_dryBaseSpin = nullptr;
+    QCheckBox *m_dryLenCheck = nullptr;   QSpinBox *m_dryLenSpin = nullptr;
+    QCheckBox *m_dryLastNCheck = nullptr; QSpinBox *m_dryLastNSpin = nullptr;
 
     // ---- left: service / logging ----
     QCheckBox *m_metricsCheck = nullptr;
@@ -145,6 +161,7 @@ private:
     QCheckBox *m_ctxCpCheck = nullptr;    QSpinBox *m_ctxCpSpin = nullptr;
     QCheckBox *m_ctxShiftCheck = nullptr;
     QCheckBox *m_kvuCheck = nullptr;
+    QCheckBox *m_cacheReuseCheck = nullptr; QSpinBox *m_cacheReuseSpin = nullptr;
 
     // ---- left: command info + buttons ----
     QPlainTextEdit *m_cmdInfo = nullptr;
