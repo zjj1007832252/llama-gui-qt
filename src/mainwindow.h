@@ -154,6 +154,7 @@ private:
     QCheckBox *m_noJinjaCheck = nullptr;
     QCheckBox *m_thinkBudgetCheck = nullptr; QSpinBox *m_thinkBudgetSpin = nullptr;
     QCheckBox *m_reasoningCheck = nullptr;  QComboBox *m_reasoningCombo = nullptr;
+    QCheckBox *m_noReasoningPreserveCheck = nullptr;
     QCheckBox *m_splitCheck = nullptr;  QComboBox *m_splitCombo = nullptr;
     QCheckBox *m_cacheKCheck = nullptr;  QComboBox *m_cacheKCombo = nullptr;
     QCheckBox *m_cacheVCheck = nullptr;  QComboBox *m_cacheVCombo = nullptr;

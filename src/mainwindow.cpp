@@ -504,12 +504,18 @@ QWidget *MainWindow::createParamPanel()
     m_reasoningCombo->setFixedWidth(200);
     addRow(grid, 15, m_reasoningCheck, m_reasoningCombo);
 
+    m_noReasoningPreserveCheck = new QCheckBox(QStringLiteral("不保留推理历史"));
+    m_noReasoningPreserveCheck->setToolTip(
+        QStringLiteral("--no-reasoning-preserve，默认保留完整多轮推理历史（更耗 token）；"
+                       "勾选后仅保留最后一条 assistant 消息的推理内容"));
+    addRow(grid, 16, m_noReasoningPreserveCheck, nullptr);
+
     m_splitCheck = new QCheckBox(QStringLiteral("多卡拆分模式"));
     m_splitCombo = new QComboBox;
     m_splitCombo->addItems({QStringLiteral("layer"), QStringLiteral("row"),
                             QStringLiteral("tensor"), QStringLiteral("none")});
     m_splitCombo->setFixedWidth(200);
-    addRow(grid, 16, m_splitCheck, m_splitCombo);
+    addRow(grid, 17, m_splitCheck, m_splitCombo);
 
     // 批大小 / 多卡分配 / 并发：默认值取自 server，勾选后才输出参数
     m_batchCheck = new QCheckBox(QStringLiteral("批大小"));
@@ -518,7 +524,7 @@ QWidget *MainWindow::createParamPanel()
     m_batchSpin->setRange(1, 1048576);
     m_batchSpin->setValue(kBatchDefault);
     m_batchSpin->setFixedWidth(110);
-    addRow(grid, 17, m_batchCheck, m_batchSpin);
+    addRow(grid, 18, m_batchCheck, m_batchSpin);
 
     m_ubatchCheck = new QCheckBox(QStringLiteral("物理批大小"));
     m_ubatchCheck->setToolTip(QStringLiteral("--ubatch-size，物理最大批大小，默认 %1").arg(kUbatchDefault));
@@ -526,14 +532,14 @@ QWidget *MainWindow::createParamPanel()
     m_ubatchSpin->setRange(1, 1048576);
     m_ubatchSpin->setValue(kUbatchDefault);
     m_ubatchSpin->setFixedWidth(110);
-    addRow(grid, 18, m_ubatchCheck, m_ubatchSpin);
+    addRow(grid, 19, m_ubatchCheck, m_ubatchSpin);
 
     m_tsCheck = new QCheckBox(QStringLiteral("多卡显存比例"));
     m_tsCheck->setToolTip(QStringLiteral("--tensor-split，按 GPU 顺序给出分配比例，如 3,1"));
     m_tsEdit = new QLineEdit;
     m_tsEdit->setPlaceholderText(QStringLiteral("如 3,1（按 GPU 顺序）"));
     m_tsEdit->setFixedWidth(200);
-    addRow(grid, 19, m_tsCheck, m_tsEdit);
+    addRow(grid, 20, m_tsCheck, m_tsEdit);
 
     m_mainGpuCheck = new QCheckBox(QStringLiteral("主GPU"));
     m_mainGpuCheck->setToolTip(
@@ -543,7 +549,7 @@ QWidget *MainWindow::createParamPanel()
     m_mainGpuSpin->setRange(0, 64);
     m_mainGpuSpin->setValue(kMainGpuDefault);
     m_mainGpuSpin->setFixedWidth(110);
-    addRow(grid, 20, m_mainGpuCheck, m_mainGpuSpin);
+    addRow(grid, 21, m_mainGpuCheck, m_mainGpuSpin);
 
     m_parallelCheck = new QCheckBox(QStringLiteral("并发槽位数"));
     m_parallelCheck->setToolTip(QStringLiteral("-np/--parallel，并发 slot 数，默认 %1（自动）")
@@ -552,10 +558,10 @@ QWidget *MainWindow::createParamPanel()
     m_parallelSpin->setRange(-1, 1024);
     m_parallelSpin->setValue(kParallelDefault);
     m_parallelSpin->setFixedWidth(110);
-    addRow(grid, 21, m_parallelCheck, m_parallelSpin);
+    addRow(grid, 22, m_parallelCheck, m_parallelSpin);
 
     grid->setColumnStretch(1, 1);
-    grid->setRowStretch(22, 1);
+    grid->setRowStretch(23, 1);
 
     addParamTab(body, QStringLiteral("1、核心基础"),
                 QStringLiteral("一、核心基础参数：上下文、线程、Flash Attn、卸载层数、"
@@ -1353,6 +1359,7 @@ void MainWindow::wireLogic()
                           m_cpuMoeCheck, m_moeCacheMibCheck, m_ncpuFfnCheck, m_reasoningCheck,
                           m_ncpuMoeCheck, m_mmprojOffloadCheck,
                           m_imageMinTokensCheck, m_imageMaxTokensCheck, m_mtmdBatchCheck,
+                          m_noReasoningPreserveCheck,
                           m_splitCheck, m_cacheKCheck, m_cacheVCheck,
                           m_keepCheck, m_cacheRamCheck, m_ctxCpCheck, m_ctxShiftCheck,
                           m_kvuCheck, m_cacheReuseCheck,
@@ -1702,6 +1709,8 @@ QStringList MainWindow::buildServerArgs() const
         args << QStringLiteral("--reasoning-budget") << QString::number(m_thinkBudgetSpin->value());
     if (m_noJinjaCheck->isChecked())
         args << QStringLiteral("--no-jinja");
+    if (m_noReasoningPreserveCheck->isChecked())
+        args << QStringLiteral("--no-reasoning-preserve");
 
     args << QStringLiteral("--host") << (m_localOnlyCheck->isChecked()
                                              ? QStringLiteral("127.0.0.1")
@@ -2016,6 +2025,8 @@ void MainWindow::refreshCmdInfo()
         text += QStringLiteral("--reasoning-budget %1\n").arg(m_thinkBudgetSpin->value());
     if (m_noJinjaCheck->isChecked())
         text += QStringLiteral("--no-jinja\n");
+    if (m_noReasoningPreserveCheck->isChecked())
+        text += QStringLiteral("--no-reasoning-preserve\n");
 
     const int pos = m_cmdInfo->verticalScrollBar()->value();
     m_cmdInfo->setPlainText(text);
@@ -2478,6 +2489,8 @@ void MainWindow::saveParams()
         o.insert(QStringLiteral("reasoningBudget"), m_thinkBudgetSpin->value());
     if (m_noJinjaCheck->isChecked())
         o.insert(QStringLiteral("noJinja"), true);
+    if (m_noReasoningPreserveCheck->isChecked())
+        o.insert(QStringLiteral("noReasoningPreserve"), true);
 
     QFile f(path);
     if (f.open(QIODevice::WriteOnly)) {
@@ -2686,6 +2699,8 @@ void MainWindow::loadParams()
     m_thinkBudgetSpin->setValue(
         o.value(QStringLiteral("reasoningBudget")).toInt(kThinkBudgetDefault));
     m_noJinjaCheck->setChecked(o.value(QStringLiteral("noJinja")).toBool(false));
+    m_noReasoningPreserveCheck->setChecked(
+        o.value(QStringLiteral("noReasoningPreserve")).toBool(false));
     m_closeWebBtn->setText(m_webuiDisabled ? QStringLiteral("开启 llama.cpp 的web访问")
                                            : QStringLiteral("关闭 llama.cpp 的web访问"));
 
@@ -2768,7 +2783,9 @@ void MainWindow::parseArgsText()
             key == QLatin1String("kv-unified") || key == QLatin1String("kvu") ||
             key == QLatin1String("spec-default") || key == QLatin1String("spec-draft-cpu-moe") ||
             key == QLatin1String("cmoed") || key == QLatin1String("no-jinja") ||
-            key == QLatin1String("no-mmproj-offload") || key == QLatin1String("mmproj-offload")) {
+            key == QLatin1String("no-mmproj-offload") || key == QLatin1String("mmproj-offload") ||
+            key == QLatin1String("no-reasoning-preserve") ||
+            key == QLatin1String("reasoning-preserve")) {
             flags << key;
         } else if (i + 1 < tokens.size() && !tokens[i + 1].startsWith(QLatin1Char('-'))) {
             opt.insert(key, tokens[++i]);
@@ -2823,6 +2840,10 @@ void MainWindow::parseArgsText()
     }
     if (flags.contains(QLatin1String("no-mmproj-offload")))
         m_mmprojOffloadCheck->setChecked(true);
+    if (flags.contains(QLatin1String("no-reasoning-preserve")))
+        m_noReasoningPreserveCheck->setChecked(true);
+    if (flags.contains(QLatin1String("reasoning-preserve")))
+        m_noReasoningPreserveCheck->setChecked(false);
     if (flags.contains(QLatin1String("mmproj-offload")))
         m_mmprojOffloadCheck->setChecked(false);
     if (opt.contains(QStringLiteral("image-min-tokens"))) {
